@@ -150,6 +150,7 @@ function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [removePromptPath, setRemovePromptPath] = useState<string | null>(null);
   const [changePasswordForm, setChangePasswordForm] = useState({
     oldPassword: "",
     newPassword: "",
@@ -754,17 +755,17 @@ function App() {
                     {preferences.recentVaults.map((path) => (
                       <div className="recent-row" key={path}>
                         <button className="recent-open" type="button" onClick={() => openRecent(path)} title={vaultName(path)}>
-                          <VaultGlyph icon={getVaultIcon(path)} size={18} />
+                          <VaultGlyph icon={getVaultIcon(path)} size={22} />
                           <span className="recent-name">{vaultName(path)}</span>
                         </button>
                         <button
                           className="icon-button"
                           type="button"
-                          onClick={() => removeRecent(path)}
+                          onClick={() => setRemovePromptPath(path)}
                           title={t("removeFromList")}
                           aria-label={t("removeFromList")}
                         >
-                          <X size={16} aria-hidden />
+                          <Trash2 size={16} aria-hidden />
                         </button>
                       </div>
                     ))}
@@ -1312,6 +1313,23 @@ function App() {
               </button>
             ))}
           </div>
+        </Modal>
+      )}
+
+      {removePromptPath !== null && (
+        <Modal title={vaultName(removePromptPath)} onClose={() => setRemovePromptPath(null)} t={t}>
+          <p className="hint">{t("removeVaultConfirm")}</p>
+          <button
+            className="danger-button full"
+            type="button"
+            onClick={() => {
+              removeRecent(removePromptPath);
+              setRemovePromptPath(null);
+            }}
+          >
+            <Trash2 size={18} aria-hidden />
+            {t("removeFromList")}
+          </button>
         </Modal>
       )}
     </div>
