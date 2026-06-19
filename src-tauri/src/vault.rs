@@ -357,6 +357,8 @@ impl VaultManager {
 
         let contents = seal_envelope(session)?;
         sync::upload(&config, contents.as_bytes())?;
+        // Local and remote now match: this is the new merge baseline.
+        session.base_entries = session.data.entries.clone();
 
         Ok(SyncResult {
             pulled,
@@ -373,14 +375,18 @@ fn read_sync_config(data: &VaultData) -> Option<SyncConfig> {
         .and_then(|value| serde_json::from_value(value.clone()).ok())
 }
 
-/// Bump the revision, seal the current data with the session key, update the
-/// in-memory baseline, and return the serialized envelope JSON.
+/// Bump the revision and seal the current data with the session key, returning
+/// the serialized envelope JSON.
+///
+/// IMPORTANT: this does NOT touch `base_entries`. The base is the last state
+/// that was in sync with the remote (set on unlock and after a successful
+/// sync); advancing it on every local save would make the next 3-way merge
+/// treat brand-new local entries as "already known", dropping them.
 fn seal_envelope(session: &mut VaultSession) -> Result<String, String> {
     session.data.revision = session.data.revision.saturating_add(1);
     session.header.updated_at = now_iso();
     let payload = seal_payload(&session.data, &mut session.header, &session.key[..])?;
     session.loaded_revision = session.data.revision;
-    session.base_entries = session.data.entries.clone();
     let envelope = VaultEnvelope {
         header: session.header.clone(),
         payload,
@@ -849,6 +855,38 @@ mod tests {
         // The original vault bytes still unlock with the original password.
         manager.lock();
         assert!(manager.unlock(created.contents, "correct-old-pass".to_string()).is_ok());
+    }
+
+    #[test]
+    fn local_save_keeps_sync_baseline() {
+        // Regression: seal_envelope must NOT advance base_entries on a local save,
+        // otherwise the next 3-way sync merge treats a brand-new local entry as
+        // "already known" and drops it (entry appears then disappears).
+        let mut manager = VaultManager::default();
+        manager.create("master-pass-123".to_string()).unwrap();
+        assert!(manager.session.as_ref().unwrap().base_entries.is_empty());
+
+        manager
+            .upsert(VaultEntry::imported(
+                "Mail".to_string(),
+                "user".to_string(),
+                "secret".to_string(),
+                String::new(),
+                String::new(),
+            ))
+            .unwrap();
+
+        let session = manager.session.as_ref().unwrap();
+        assert_eq!(session.data.entries.len(), 1);
+        assert!(
+            session.base_entries.is_empty(),
+            "a local save must not advance the merge baseline"
+        );
+
+        // And the merge against a remote that lacks the new entry keeps it.
+        let merged = merge_entries(&session.base_entries, &[], &session.data.entries);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].title, "Mail");
     }
 
     #[test]
