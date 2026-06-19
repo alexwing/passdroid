@@ -253,23 +253,28 @@ function App() {
     }
   };
 
-  const persistPreferences = (next: Preferences) => {
-    setPreferences(next);
-    Api.savePreferences(next).catch(() => {});
+  // Functional updater so sequential calls in the same tick compose instead of
+  // clobbering each other (e.g. rememberVault + cacheVaultIcon on unlock).
+  const persistPreferences = (update: (prev: Preferences) => Preferences) => {
+    setPreferences((prev) => {
+      const next = update(prev);
+      if (next !== prev) void Api.savePreferences(next).catch(() => {});
+      return next;
+    });
   };
 
   const rememberVault = (path: string) => {
-    persistPreferences({
-      ...preferences,
-      recentVaults: [path, ...preferences.recentVaults.filter((item) => item !== path)].slice(0, 8),
-    });
+    persistPreferences((prev) => ({
+      ...prev,
+      recentVaults: [path, ...prev.recentVaults.filter((item) => item !== path)].slice(0, 8),
+    }));
   };
 
   const removeRecent = (path: string) => {
-    persistPreferences({
-      ...preferences,
-      recentVaults: preferences.recentVaults.filter((item) => item !== path),
-    });
+    persistPreferences((prev) => ({
+      ...prev,
+      recentVaults: prev.recentVaults.filter((item) => item !== path),
+    }));
   };
 
   // Locked-screen icon comes from the preferences cache (filled when the vault
@@ -277,11 +282,12 @@ function App() {
   const getVaultIcon = (path: string) => preferences.vaultIcons[path] || DEFAULT_VAULT_ICON;
 
   const cacheVaultIcon = (path: string, icon: string) => {
-    if (!icon || preferences.vaultIcons[path] === icon) return;
-    persistPreferences({
-      ...preferences,
-      vaultIcons: { ...preferences.vaultIcons, [path]: icon },
-    });
+    if (!icon) return;
+    persistPreferences((prev) =>
+      prev.vaultIcons[path] === icon
+        ? prev
+        : { ...prev, vaultIcons: { ...prev.vaultIcons, [path]: icon } },
+    );
   };
 
   // Store the icon inside the vault (so it syncs across devices) and cache it
@@ -591,10 +597,6 @@ function App() {
     }
   };
 
-  const updatePreferences = async (next: Preferences) => {
-    setPreferences(next);
-    await run(() => Api.savePreferences(next));
-  };
 
   const changeMasterPassword = async (event: FormEvent) => {
     event.preventDefault();
@@ -801,7 +803,7 @@ function App() {
               <FileLock2 size={26} aria-hidden />
               <div>
                 <strong>{t("appName")}</strong>
-                <span>{vaultStatus?.entryCount ?? entries.length}</span>
+                <span>{entries.length}</span>
               </div>
             </div>
             <div className="topbar-actions">
@@ -978,7 +980,7 @@ function App() {
                   { value: "light", label: t("light"), icon: <Sun size={16} aria-hidden /> },
                   { value: "dark", label: t("dark"), icon: <Moon size={16} aria-hidden /> },
                 ]}
-                onChange={(theme) => updatePreferences({ ...preferences, theme: theme as ThemePreference })}
+                onChange={(theme) => persistPreferences((prev) => ({ ...prev, theme: theme as ThemePreference }))}
               />
             </section>
             <section>
@@ -990,7 +992,7 @@ function App() {
                   { value: "es", label: t("spanish"), icon: <Globe2 size={16} aria-hidden /> },
                   { value: "en", label: t("english"), icon: <Globe2 size={16} aria-hidden /> },
                 ]}
-                onChange={(language) => updatePreferences({ ...preferences, language: language as Preferences["language"] })}
+                onChange={(language) => persistPreferences((prev) => ({ ...prev, language: language as Preferences["language"] }))}
               />
             </section>
           </div>
