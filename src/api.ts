@@ -24,6 +24,7 @@ export interface VaultStatus {
 export interface Preferences {
   theme: ThemePreference;
   language: LanguagePreference;
+  recentVaults: string[];
 }
 
 export interface GeneratePasswordOptions {
@@ -71,6 +72,7 @@ const Api = {
     invoke<VaultEntry[]>("import_legacy_commit", { importId }),
   saveVault: () => invoke<VaultStatus>("save_vault"),
   exportVaultCopy: (path: string) => invoke<VaultStatus>("export_vault_copy", { path }),
+  exportLegacyXml: (path: string) => invoke<number>("export_legacy_xml", { path }),
 };
 
 export default Api;

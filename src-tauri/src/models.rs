@@ -137,6 +137,8 @@ pub struct ImportPreview {
 pub struct Preferences {
     pub theme: String,
     pub language: String,
+    #[serde(default)]
+    pub recent_vaults: Vec<String>,
 }
 
 impl Default for Preferences {
@@ -144,6 +146,7 @@ impl Default for Preferences {
         Self {
             theme: "system".to_string(),
             language: "system".to_string(),
+            recent_vaults: Vec::new(),
         }
     }
 }

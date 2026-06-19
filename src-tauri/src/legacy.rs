@@ -61,6 +61,45 @@ pub fn import_legacy_entries(path: &str, legacy_password: Option<String>) -> Res
     parse_xml(&xml)
 }
 
+/// Serialize entries to the legacy Passdroid cleartext XML format
+/// (`<passdroid>` with per-entry `<system>` and CDATA children), matching the
+/// old app's FileExporter so the output is readable by both this app and the
+/// original Passdroid. The output is UNENCRYPTED.
+pub fn entries_to_legacy_xml(entries: &[VaultEntry], app_version: &str) -> String {
+    let mut sb = String::new();
+    sb.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    sb.push_str(&format!("<passdroid version=\"{}\">\n", escape_xml_attr(app_version)));
+    for entry in entries {
+        sb.push_str(&format!("  <system name=\"{}\">\n", escape_xml_attr(&entry.title)));
+        push_cdata_field(&mut sb, "username", &entry.username);
+        push_cdata_field(&mut sb, "password", &entry.password);
+        push_cdata_field(&mut sb, "note", &entry.notes);
+        push_cdata_field(&mut sb, "url", &entry.url);
+        sb.push_str("  </system>\n");
+    }
+    sb.push_str("</passdroid>\n");
+    sb
+}
+
+fn push_cdata_field(sb: &mut String, tag: &str, value: &str) {
+    if value.is_empty() {
+        return;
+    }
+    // Split any literal "]]>" so it cannot terminate the CDATA section early,
+    // mirroring the original exporter's escaping.
+    let escaped = value.replace("]]>", "]]>]]><![CDATA[");
+    sb.push_str(&format!("    <{tag}><![CDATA[{escaped}]]></{tag}>\n"));
+}
+
+fn escape_xml_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
 fn parse_xml(xml: &str) -> Result<Vec<VaultEntry>, String> {
     let doc = roxmltree::Document::parse(xml).map_err(|_| "legacy_xml_invalid".to_string())?;
     let root = doc.root_element();
@@ -442,6 +481,34 @@ mod tests {
         fs::write(&path, [0xff, 0xfe, 0x00, 0x01, 0x02, 0x03]).unwrap();
         assert!(import_legacy_entries(&path, None).is_err());
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn legacy_xml_export_round_trips() {
+        let entries = vec![
+            VaultEntry::imported(
+                "Mail".into(),
+                "user@example.com".into(),
+                "p4ss".into(),
+                "a note".into(),
+                "https://ex.com".into(),
+            ),
+            // Title with characters that must be XML-attribute-escaped, and
+            // empty fields that should be omitted from the output.
+            VaultEntry::imported("R&D <\"tag\">".into(), String::new(), "x".into(), String::new(), String::new()),
+        ];
+
+        let xml = entries_to_legacy_xml(&entries, "3.0.0");
+        let parsed = parse_xml(&xml).unwrap();
+
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].title, "Mail");
+        assert_eq!(parsed[0].password, "p4ss");
+        assert_eq!(parsed[0].notes, "a note");
+        assert_eq!(parsed[0].url, "https://ex.com");
+        assert_eq!(parsed[1].title, "R&D <\"tag\">");
+        assert_eq!(parsed[1].password, "x");
+        assert_eq!(parsed[1].username, "");
     }
 }
 

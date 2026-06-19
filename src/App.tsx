@@ -1,9 +1,11 @@
 import {
+  Clock,
   Copy,
   Download,
   Eye,
   EyeOff,
   FileLock2,
+  FileText,
   FolderOpen,
   Globe2,
   Import,
@@ -18,6 +20,7 @@ import {
   Sun,
   Trash2,
   Wand2,
+  X,
 } from "lucide-react";
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
@@ -33,7 +36,9 @@ import { createTranslator, resolveLanguage, ThemePreference, TranslationKey } fr
 type Screen = "start" | "unlock" | "vault";
 type Notice = { kind: "success" | "error"; text: string } | null;
 
-const defaultPreferences: Preferences = { theme: "system", language: "system" };
+const defaultPreferences: Preferences = { theme: "system", language: "system", recentVaults: [] };
+
+const vaultLabel = (path: string) => path.split(/[\\/]/).pop() || path;
 
 const emptyEntry = (): VaultEntry => ({
   id: "",
@@ -66,6 +71,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [changePasswordForm, setChangePasswordForm] = useState({
     oldPassword: "",
     newPassword: "",
@@ -143,6 +149,32 @@ function App() {
     }
   };
 
+  const persistPreferences = (next: Preferences) => {
+    setPreferences(next);
+    Api.savePreferences(next).catch(() => {});
+  };
+
+  const rememberVault = (path: string) => {
+    persistPreferences({
+      ...preferences,
+      recentVaults: [path, ...preferences.recentVaults.filter((item) => item !== path)].slice(0, 8),
+    });
+  };
+
+  const removeRecent = (path: string) => {
+    persistPreferences({
+      ...preferences,
+      recentVaults: preferences.recentVaults.filter((item) => item !== path),
+    });
+  };
+
+  const openRecent = (path: string) => {
+    setVaultPath(path);
+    setUnlockPassword("");
+    setNotice(null);
+    setScreen("unlock");
+  };
+
   const chooseVaultForCreate = async () => {
     const selected = await save({
       defaultPath: "passdroid.pdvault",
@@ -180,6 +212,7 @@ function App() {
     );
     if (status) {
       setVaultStatus(status);
+      rememberVault(vaultPath);
       setEntries([]);
       setDraft(emptyEntry());
       setSelectedId("");
@@ -197,6 +230,7 @@ function App() {
     );
     if (status) {
       setVaultStatus(status);
+      rememberVault(vaultPath);
       const loaded = await run(() => Api.listEntries());
       setEntries(loaded ?? []);
       setUnlockPassword("");
@@ -257,7 +291,19 @@ function App() {
       filters: [{ name: t("vaultFile"), extensions: ["pdvault"] }],
     });
     if (selected) {
-      await run(() => Api.exportVaultCopy(selected), "copyExported");
+      const status = await run(() => Api.exportVaultCopy(selected), "copyExported");
+      if (status) setExportOpen(false);
+    }
+  };
+
+  const exportLegacyXml = async () => {
+    const selected = await save({
+      defaultPath: "passdroid-export.xml",
+      filters: [{ name: "XML", extensions: ["xml"] }],
+    });
+    if (selected) {
+      const count = await run(() => Api.exportLegacyXml(selected), "xmlExported");
+      if (count !== null) setExportOpen(false);
     }
   };
 
@@ -396,6 +442,31 @@ function App() {
                 <FolderOpen size={18} aria-hidden />
                 {t("openVault")}
               </button>
+              {preferences.recentVaults.length > 0 && (
+                <div className="recent-vaults">
+                  <h3>{t("recentVaults")}</h3>
+                  <div className="recent-list">
+                    {preferences.recentVaults.map((path) => (
+                      <div className="recent-row" key={path}>
+                        <button className="recent-open" type="button" onClick={() => openRecent(path)} title={path}>
+                          <Clock size={16} aria-hidden />
+                          <span className="recent-name">{vaultLabel(path)}</span>
+                          <span className="recent-path">{path}</span>
+                        </button>
+                        <button
+                          className="icon-button"
+                          type="button"
+                          onClick={() => removeRecent(path)}
+                          title={t("removeFromList")}
+                          aria-label={t("removeFromList")}
+                        >
+                          <X size={16} aria-hidden />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         </main>
@@ -443,7 +514,7 @@ function App() {
               <button className="icon-button" type="button" title={t("importLegacy")} aria-label={t("importLegacy")} onClick={() => setImportOpen(true)}>
                 <Import size={19} aria-hidden />
               </button>
-              <button className="icon-button" type="button" title={t("exportCopy")} aria-label={t("exportCopy")} onClick={exportCopy}>
+              <button className="icon-button" type="button" title={t("exportData")} aria-label={t("exportData")} onClick={() => setExportOpen(true)}>
                 <Download size={19} aria-hidden />
               </button>
               <button className="icon-button" type="button" title={t("settings")} aria-label={t("settings")} onClick={() => setSettingsOpen(true)}>
@@ -571,7 +642,7 @@ function App() {
       )}
 
       {settingsOpen && (
-        <Modal title={t("settings")} onClose={closeSettings}>
+        <Modal title={t("settings")} onClose={closeSettings} t={t}>
           <div className="settings-grid">
             <section>
               <h3>{t("theme")}</h3>
@@ -624,7 +695,7 @@ function App() {
       )}
 
       {generatorOpen && (
-        <Modal title={t("generator")} onClose={closeGenerator}>
+        <Modal title={t("generator")} onClose={closeGenerator} t={t}>
           <div className="generator-layout">
             <label>
               <span>{t("length")}</span>
@@ -659,7 +730,7 @@ function App() {
       )}
 
       {importOpen && (
-        <Modal title={t("importLegacy")} onClose={closeImport}>
+        <Modal title={t("importLegacy")} onClose={closeImport} t={t}>
           <form className="stack-form" onSubmit={previewImport}>
             <FilePickerRow label={t("chooseFile")} path={legacyPath} onPick={chooseLegacyFile} t={t} />
             <PasswordInput
@@ -696,6 +767,27 @@ function App() {
               </button>
             </section>
           )}
+        </Modal>
+      )}
+
+      {exportOpen && (
+        <Modal title={t("exportData")} onClose={() => setExportOpen(false)} t={t}>
+          <div className="export-options">
+            <button className="export-option" type="button" onClick={exportCopy} disabled={busy}>
+              <FileLock2 size={22} aria-hidden />
+              <div>
+                <strong>{t("exportEncrypted")}</strong>
+                <span>{t("exportEncryptedHint")}</span>
+              </div>
+            </button>
+            <button className="export-option danger" type="button" onClick={exportLegacyXml} disabled={busy}>
+              <FileText size={22} aria-hidden />
+              <div>
+                <strong>{t("exportXmlPlain")}</strong>
+                <span>{t("exportXmlWarning")}</span>
+              </div>
+            </button>
+          </div>
         </Modal>
       )}
     </div>
@@ -798,21 +890,34 @@ function Modal({
   title,
   children,
   onClose,
+  t,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
+  t: ReturnType<typeof createTranslator>;
 }) {
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section className="modal" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+      >
         <header>
           <h2>{title}</h2>
-          <button className="icon-button" type="button" onClick={onClose} aria-label={title} title={title}>
-            <Lock size={18} aria-hidden />
+          <button className="icon-button" type="button" onClick={onClose} aria-label={t("close")} title={t("close")}>
+            <X size={18} aria-hidden />
           </button>
         </header>
         {children}
+        <footer className="modal-footer">
+          <button className="ghost-button" type="button" onClick={onClose}>
+            {t("close")}
+          </button>
+        </footer>
       </section>
     </div>
   );

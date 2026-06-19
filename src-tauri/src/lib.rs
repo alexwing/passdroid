@@ -28,6 +28,7 @@ pub fn run() {
             vault::import_legacy_commit,
             vault::save_vault,
             vault::export_vault_copy,
+            vault::export_legacy_xml,
             preferences::get_preferences,
             preferences::save_preferences
         ])

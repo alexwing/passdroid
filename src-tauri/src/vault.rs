@@ -208,6 +208,16 @@ impl VaultManager {
         Ok(status)
     }
 
+    /// Export the visible entries as legacy-compatible (UNENCRYPTED) Passdroid XML.
+    pub fn export_legacy_xml(&self, path: String) -> Result<usize, String> {
+        let session = self.session.as_ref().ok_or_else(|| "vault_locked".to_string())?;
+        let entries = visible_entries(&session.data.entries);
+        let xml = legacy::entries_to_legacy_xml(&entries, env!("CARGO_PKG_VERSION"));
+        ensure_parent_dir(&path)?;
+        fs::write(&path, xml).map_err(|e| e.to_string())?;
+        Ok(entries.len())
+    }
+
     pub fn import_preview(
         &mut self,
         path: String,
@@ -332,6 +342,14 @@ pub fn export_vault_copy(
     state: State<'_, SharedVaultManager>,
 ) -> Result<VaultStatus, String> {
     manager!(state).export_copy(path)
+}
+
+#[tauri::command]
+pub fn export_legacy_xml(
+    path: String,
+    state: State<'_, SharedVaultManager>,
+) -> Result<usize, String> {
+    manager!(state).export_legacy_xml(path)
 }
 
 #[tauri::command]

@@ -410,20 +410,38 @@ textarea:focus {
 }
 
 .editor-panel {
+  display: flex;
+  flex-direction: column;
   padding: 18px;
   overflow: auto;
 }
 
 .entry-form {
   display: grid;
-  max-width: 920px;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto auto minmax(160px, 1fr) auto;
   gap: 16px;
 }
 
 .notes-field,
 .form-actions {
   grid-column: 1 / -1;
+}
+
+.notes-field {
+  min-height: 0;
+}
+
+.notes-field textarea {
+  height: 100%;
+  min-height: 160px;
+}
+
+.form-actions {
+  align-self: end;
 }
 
 .form-actions {
@@ -571,6 +589,131 @@ textarea:focus {
   white-space: nowrap;
 }
 
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.recent-vaults {
+  display: grid;
+  gap: 8px;
+}
+
+.recent-vaults h3 {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.recent-list {
+  display: grid;
+  max-height: 260px;
+  gap: 6px;
+  overflow: auto;
+}
+
+.recent-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.recent-open {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "icon name"
+    "icon path";
+  align-items: center;
+  gap: 0 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: left;
+}
+
+.recent-open:hover {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: var(--primary-soft);
+}
+
+.recent-open svg {
+  grid-area: icon;
+  color: var(--muted);
+}
+
+.recent-name {
+  grid-area: name;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-path {
+  grid-area: path;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-options {
+  display: grid;
+  gap: 12px;
+}
+
+.export-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: left;
+}
+
+.export-option:hover {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: var(--primary-soft);
+}
+
+.export-option.danger:hover {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: var(--danger-soft);
+}
+
+.export-option svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--primary-strong);
+}
+
+.export-option.danger svg {
+  color: var(--danger);
+}
+
+.export-option div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.export-option strong {
+  font-weight: 800;
+}
+
+.export-option span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 @media (max-width: 900px) {
   .start-layout {
     grid-template-columns: 1fr;
@@ -615,6 +758,14 @@ textarea:focus {
   .entry-form,
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .entry-form {
+    grid-template-rows: none;
+  }
+
+  .notes-field textarea {
+    height: auto;
   }
 
   .segmented {
