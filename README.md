@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src-tauri/icons/passdroid.png" alt="Passdroid Next" width="160" height="160" />
+</p>
+
 # Passdroid Next
 
 A modern, cross-platform password vault built with **Tauri 2 + React + Rust**. It is the
