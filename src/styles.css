@@ -625,16 +625,12 @@ textarea:focus {
 }
 
 .recent-open {
-  display: grid;
+  display: flex;
   flex: 1;
   min-width: 0;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-areas:
-    "icon name"
-    "icon path";
   align-items: center;
-  gap: 0 10px;
-  padding: 8px 12px;
+  gap: 10px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
@@ -647,23 +643,13 @@ textarea:focus {
 }
 
 .recent-open svg {
-  grid-area: icon;
+  flex-shrink: 0;
   color: var(--muted);
 }
 
 .recent-name {
-  grid-area: name;
   overflow: hidden;
   font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.recent-path {
-  grid-area: path;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

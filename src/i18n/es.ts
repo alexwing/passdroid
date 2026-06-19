@@ -115,6 +115,7 @@ const es = {
   err_password_generator_empty_charset: "Activa al menos un grupo de caracteres.",
   err_password_generator_failed: "No se pudo generar la contraseña.",
   err_vault_file_invalid: "El archivo de vault no es válido.",
+  err_vault_file_unreadable: "No se pudo leer el archivo del vault. En Android, vuelve a abrirlo con el selector de archivos.",
   err_vault_state_poisoned: "Estado interno del vault dañado. Reinicia la app.",
   err_key_derivation_failed: "No se pudo derivar la clave.",
   err_legacy_file_not_utf8: "El archivo legacy no es texto válido.",

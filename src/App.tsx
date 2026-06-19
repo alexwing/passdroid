@@ -24,7 +24,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFile, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import Api, {
@@ -54,6 +54,9 @@ const defaultSync: SyncConfig = {
 };
 
 const vaultLabel = (path: string) => path.split(/[\\/]/).pop() || path;
+
+// File name without directory or extension, for the recents list.
+const vaultName = (path: string) => vaultLabel(path).replace(/\.[^./\\]+$/, "");
 
 const emptyEntry = (): VaultEntry => ({
   id: "",
@@ -109,6 +112,9 @@ function App() {
   const [syncConfig, setSyncConfig] = useState<SyncConfig | null>(null);
   const [syncForm, setSyncForm] = useState<SyncConfig>(defaultSync);
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "ok" | "error">("idle");
+  // Suppress the auto-lock-on-background while a native file picker is in front
+  // (the picker backgrounds the webview, which would otherwise trigger a lock).
+  const suppressLock = useRef(false);
 
   const t = useMemo(() => createTranslator(preferences.language), [preferences.language]);
 
@@ -135,6 +141,26 @@ function App() {
     media.addEventListener("change", applyTheme);
     return () => media.removeEventListener("change", applyTheme);
   }, [preferences]);
+
+  // Security: lock the open vault when the app goes to the background (app
+  // switch, recents, screen off) so returning requires the master password
+  // again — like the original Passdroid. The vault path is kept so the unlock
+  // screen targets the same vault.
+  useEffect(() => {
+    const handleHidden = () => {
+      if (!document.hidden || screen !== "vault" || suppressLock.current) return;
+      Api.lockVault().catch(() => {});
+      setEntries([]);
+      setDraft(emptyEntry());
+      setSelectedId("");
+      setEditing(false);
+      setSyncState("idle");
+      setUnlockPassword("");
+      setScreen("unlock");
+    };
+    document.addEventListener("visibilitychange", handleHidden);
+    return () => document.removeEventListener("visibilitychange", handleHidden);
+  }, [screen]);
 
   const filteredEntries = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -247,19 +273,34 @@ function App() {
 
   const testSyncConnection = () => run(() => Api.testSync(syncForm), "syncOk");
 
+  // Run a native file dialog with auto-lock suppressed (the picker backgrounds
+  // the webview, which must not trigger the lock-on-background).
+  const pick = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    suppressLock.current = true;
+    try {
+      return await fn();
+    } finally {
+      suppressLock.current = false;
+    }
+  };
+
   const chooseVaultForCreate = async () => {
-    const selected = await save({
-      defaultPath: "passdroid.pdvault",
-      filters: [{ name: t("vaultFile"), extensions: ["pdvault"] }],
-    });
+    const selected = await pick(() =>
+      save({
+        defaultPath: "passdroid.pdvault",
+        filters: [{ name: t("vaultFile"), extensions: ["pdvault"] }],
+      }),
+    );
     if (selected) setVaultPath(selected);
   };
 
   const chooseVaultForOpen = async () => {
-    const selected = await open({
-      multiple: false,
-      filters: [{ name: t("vaultFile"), extensions: ["pdvault"] }],
-    });
+    const selected = await pick(() =>
+      open({
+        multiple: false,
+        filters: [{ name: t("vaultFile"), extensions: ["pdvault"] }],
+      }),
+    );
     if (typeof selected === "string") {
       setVaultPath(selected);
       setUnlockPassword("");
@@ -302,7 +343,14 @@ function App() {
   const unlockVault = async (event: FormEvent) => {
     event.preventDefault();
     const status = await run(async () => {
-      const contents = await readTextFile(vaultPath);
+      let contents: string;
+      try {
+        contents = await readTextFile(vaultPath);
+      } catch {
+        // Distinguish "can't read the file" (e.g. a lapsed Android content-URI
+        // permission) from a genuinely wrong master password.
+        throw "vault_file_unreadable";
+      }
       return Api.unlockVault(contents, unlockPassword);
     }, "vaultUnlocked");
     if (status) {
@@ -387,10 +435,12 @@ function App() {
   };
 
   const exportCopy = async () => {
-    const selected = await save({
-      defaultPath: "passdroid-copy.pdvault",
-      filters: [{ name: t("vaultFile"), extensions: ["pdvault"] }],
-    });
+    const selected = await pick(() =>
+      save({
+        defaultPath: "passdroid-copy.pdvault",
+        filters: [{ name: t("vaultFile"), extensions: ["pdvault"] }],
+      }),
+    );
     if (selected) {
       const ok = await run(async () => {
         const contents = await Api.exportVaultCopy();
@@ -402,10 +452,12 @@ function App() {
   };
 
   const exportLegacyXml = async () => {
-    const selected = await save({
-      defaultPath: "passdroid-export.xml",
-      filters: [{ name: "XML", extensions: ["xml"] }],
-    });
+    const selected = await pick(() =>
+      save({
+        defaultPath: "passdroid-export.xml",
+        filters: [{ name: "XML", extensions: ["xml"] }],
+      }),
+    );
     if (selected) {
       const ok = await run(async () => {
         const xml = await Api.exportLegacyXml();
@@ -453,10 +505,12 @@ function App() {
   };
 
   const chooseLegacyFile = async () => {
-    const selected = await open({
-      multiple: false,
-      filters: [{ name: "Passdroid", extensions: ["xml", "db"] }],
-    });
+    const selected = await pick(() =>
+      open({
+        multiple: false,
+        filters: [{ name: "Passdroid", extensions: ["xml", "db"] }],
+      }),
+    );
     if (typeof selected === "string") {
       setLegacyPath(selected);
       setImportPreview(null);
@@ -537,10 +591,9 @@ function App() {
                   <div className="recent-list">
                     {preferences.recentVaults.map((path) => (
                       <div className="recent-row" key={path}>
-                        <button className="recent-open" type="button" onClick={() => openRecent(path)} title={path}>
+                        <button className="recent-open" type="button" onClick={() => openRecent(path)} title={vaultName(path)}>
                           <Clock size={16} aria-hidden />
-                          <span className="recent-name">{vaultLabel(path)}</span>
-                          <span className="recent-path">{path}</span>
+                          <span className="recent-name">{vaultName(path)}</span>
                         </button>
                         <button
                           className="icon-button"

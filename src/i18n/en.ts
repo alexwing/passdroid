@@ -117,6 +117,7 @@ const en: Record<keyof typeof es, string> = {
   err_password_generator_empty_charset: "Enable at least one character group.",
   err_password_generator_failed: "Could not generate the password.",
   err_vault_file_invalid: "The vault file is not valid.",
+  err_vault_file_unreadable: "Could not read the vault file. On Android, open it again with the file picker.",
   err_vault_state_poisoned: "Internal vault state is corrupt. Restart the app.",
   err_key_derivation_failed: "Could not derive the key.",
   err_legacy_file_not_utf8: "The legacy file is not valid text.",
