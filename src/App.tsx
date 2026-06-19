@@ -241,13 +241,17 @@ function App() {
   };
 
   const lockVault = async () => {
-    const ok = await run(() => Api.lockVault(), "vaultLocked");
-    if (ok !== null) {
-      setEntries([]);
-      setDraft(emptyEntry());
-      setSelectedId("");
-      setScreen("unlock");
-    }
+    // lock_vault returns Result<(), _>; Tauri marshals Ok(()) to JS `null`, so we
+    // cannot gate the UI reset on the resolved value. Always clear the unlocked
+    // state and return to the start screen — locking must never leave secrets on screen.
+    await run(() => Api.lockVault(), "vaultLocked");
+    setEntries([]);
+    setDraft(emptyEntry());
+    setSelectedId("");
+    setQuery("");
+    setVaultStatus(null);
+    setVaultPath("");
+    setScreen("start");
   };
 
   const saveEntry = async (event: FormEvent) => {
