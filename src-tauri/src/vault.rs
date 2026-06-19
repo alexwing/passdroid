@@ -256,6 +256,19 @@ impl VaultManager {
         })
     }
 
+    pub fn set_vault_icon(&mut self, icon: String) -> Result<VaultSnapshot, String> {
+        let session = self.session.as_mut().ok_or_else(|| "vault_locked".to_string())?;
+        if !session.data.settings.is_object() {
+            session.data.settings = serde_json::json!({});
+        }
+        session.data.settings["icon"] = serde_json::Value::String(icon);
+        let contents = seal_envelope(session)?;
+        Ok(VaultSnapshot {
+            status: session.status(),
+            contents,
+        })
+    }
+
     pub fn get_sync_config(&self) -> Result<Option<SyncConfig>, String> {
         let session = self.session.as_ref().ok_or_else(|| "vault_locked".to_string())?;
         Ok(read_sync_config(&session.data))
@@ -467,6 +480,13 @@ impl VaultSession {
             vault_id: self.header.vault_id.clone(),
             revision: self.data.revision,
             entry_count: self.data.entries.iter().filter(|entry| entry.deleted_at.is_none()).count(),
+            icon: self
+                .data
+                .settings
+                .get("icon")
+                .and_then(|value| value.as_str())
+                .unwrap_or("")
+                .to_string(),
         }
     }
 }
@@ -546,6 +566,14 @@ pub fn export_vault_copy(state: State<'_, SharedVaultManager>) -> Result<String,
 #[tauri::command]
 pub fn export_legacy_xml(state: State<'_, SharedVaultManager>) -> Result<String, String> {
     manager!(state).export_legacy_xml()
+}
+
+#[tauri::command]
+pub fn set_vault_icon(
+    icon: String,
+    state: State<'_, SharedVaultManager>,
+) -> Result<VaultSnapshot, String> {
+    manager!(state).set_vault_icon(icon)
 }
 
 #[tauri::command]

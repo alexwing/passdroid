@@ -93,15 +93,17 @@ button:disabled {
 }
 
 .brand-icon {
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   border-radius: 22%;
 }
 
 .brand h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: 22px;
+  font-weight: 800;
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .start-actions {

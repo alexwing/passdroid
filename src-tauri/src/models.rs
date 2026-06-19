@@ -104,6 +104,8 @@ pub struct VaultStatus {
     pub vault_id: String,
     pub revision: u64,
     pub entry_count: usize,
+    /// Icon key stored inside the vault (settings.icon); empty if unset.
+    pub icon: String,
 }
 
 /// A status plus the serialized vault file the frontend should persist. File I/O

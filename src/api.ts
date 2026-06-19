@@ -18,6 +18,7 @@ export interface VaultStatus {
   vaultId: string;
   revision: number;
   entryCount: number;
+  icon: string;
 }
 
 export interface VaultSnapshot {
@@ -102,6 +103,7 @@ const Api = {
   saveVault: () => invoke<VaultSnapshot>("save_vault"),
   exportVaultCopy: () => invoke<string>("export_vault_copy"),
   exportLegacyXml: () => invoke<string>("export_legacy_xml"),
+  setVaultIcon: (icon: string) => invoke<VaultSnapshot>("set_vault_icon", { icon }),
   getSyncConfig: () => invoke<SyncConfig | null>("get_sync_config"),
   setSyncConfig: (config: SyncConfig) => invoke<VaultSnapshot>("set_sync_config", { config }),
   testSync: (config: SyncConfig) => invoke<void>("test_sync", { config }),

@@ -2,7 +2,6 @@ import {
   ArrowLeft,
   Briefcase,
   Building2,
-  Clock,
   Cloud,
   Copy,
   CreditCard,
@@ -21,7 +20,6 @@ import {
   type LucideIcon,
   Mail,
   Moon,
-  Palette,
   Plus,
   RefreshCw,
   Save,
@@ -145,7 +143,7 @@ function App() {
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const [iconPickerPath, setIconPickerPath] = useState<string | null>(null);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [changePasswordForm, setChangePasswordForm] = useState({
     oldPassword: "",
     newPassword: "",
@@ -268,14 +266,31 @@ function App() {
     });
   };
 
-  const getVaultIcon = (path: string) => preferences.vaultIcons[path] ?? DEFAULT_VAULT_ICON;
+  // Locked-screen icon comes from the preferences cache (filled when the vault
+  // was last opened); falls back to the default if the vault was never opened here.
+  const getVaultIcon = (path: string) => preferences.vaultIcons[path] || DEFAULT_VAULT_ICON;
 
-  const setVaultIcon = (path: string, icon: string) => {
+  const cacheVaultIcon = (path: string, icon: string) => {
+    if (!icon || preferences.vaultIcons[path] === icon) return;
     persistPreferences({
       ...preferences,
       vaultIcons: { ...preferences.vaultIcons, [path]: icon },
     });
-    setIconPickerPath(null);
+  };
+
+  // Store the icon inside the vault (so it syncs across devices) and cache it
+  // locally for the locked screen. Picked from Settings on the open vault.
+  const applyVaultIcon = async (icon: string) => {
+    const snapshot = await run(async () => {
+      const snap = await Api.setVaultIcon(icon);
+      await writeTextFile(vaultPath, snap.contents);
+      return snap;
+    });
+    if (snapshot) {
+      setVaultStatus(snapshot.status);
+      cacheVaultIcon(vaultPath, icon);
+    }
+    setIconPickerOpen(false);
   };
 
   const openRecent = (path: string) => {
@@ -419,6 +434,7 @@ function App() {
     if (status) {
       setVaultStatus(status);
       rememberVault(vaultPath);
+      cacheVaultIcon(vaultPath, status.icon);
       const loaded = await run(() => Api.listEntries());
       setEntries(loaded ?? []);
       setUnlockPassword("");
@@ -655,15 +671,6 @@ function App() {
                         <button className="recent-open" type="button" onClick={() => openRecent(path)} title={vaultName(path)}>
                           <VaultGlyph icon={getVaultIcon(path)} size={18} />
                           <span className="recent-name">{vaultName(path)}</span>
-                        </button>
-                        <button
-                          className="icon-button"
-                          type="button"
-                          onClick={() => setIconPickerPath(path)}
-                          title={t("chooseIcon")}
-                          aria-label={t("chooseIcon")}
-                        >
-                          <Palette size={16} aria-hidden />
                         </button>
                         <button
                           className="icon-button"
@@ -934,6 +941,20 @@ function App() {
               />
             </section>
           </div>
+
+          <section className="stack-form">
+            <h3>{t("vaultIcon")}</h3>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setIconPickerOpen(true)}
+              disabled={busy}
+            >
+              <VaultGlyph icon={vaultStatus?.icon || DEFAULT_VAULT_ICON} size={18} />
+              {t("chooseIcon")}
+            </button>
+          </section>
+
           <form className="stack-form" onSubmit={changeMasterPassword}>
             <h3>{t("changePassword")}</h3>
             <PasswordInput
@@ -1138,15 +1159,16 @@ function App() {
         </Modal>
       )}
 
-      {iconPickerPath !== null && (
-        <Modal title={t("chooseIcon")} onClose={() => setIconPickerPath(null)} t={t}>
+      {iconPickerOpen && (
+        <Modal title={t("chooseIcon")} onClose={() => setIconPickerOpen(false)} t={t}>
           <div className="icon-grid">
             {Object.keys(VAULT_ICONS).map((key) => (
               <button
                 key={key}
                 type="button"
-                className={`icon-choice ${getVaultIcon(iconPickerPath) === key ? "active" : ""}`}
-                onClick={() => setVaultIcon(iconPickerPath, key)}
+                className={`icon-choice ${(vaultStatus?.icon || DEFAULT_VAULT_ICON) === key ? "active" : ""}`}
+                onClick={() => applyVaultIcon(key)}
+                disabled={busy}
                 aria-label={key}
               >
                 <VaultGlyph icon={key} size={22} />

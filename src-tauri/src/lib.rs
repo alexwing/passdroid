@@ -30,6 +30,7 @@ pub fn run() {
             vault::save_vault,
             vault::export_vault_copy,
             vault::export_legacy_xml,
+            vault::set_vault_icon,
             vault::get_sync_config,
             vault::set_sync_config,
             vault::test_sync,

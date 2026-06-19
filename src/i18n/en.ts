@@ -17,6 +17,7 @@ const en: Record<keyof typeof es, string> = {
   recentVaults: "Recent vaults",
   removeFromList: "Remove from list",
   chooseIcon: "Choose icon",
+  vaultIcon: "Vault icon",
   search: "Search",
   newEntry: "New entry",
   save: "Save",
