@@ -15,6 +15,12 @@ src-tauri/target
 src-tauri/gen/android/app/build
 src-tauri/gen/android/.gradle
 
+# Signing material — never commit keystores or their passwords
+*.jks
+*.keystore
+keystore.properties
+key.properties
+
 # Editor and OS files
 .vscode/*
 !.vscode/extensions.json
