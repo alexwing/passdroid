@@ -25,6 +25,7 @@ pub fn run() {
             vault::delete_entry,
             vault::change_master_password,
             vault::generate_password,
+            vault::is_android,
             vault::import_legacy_preview,
             vault::import_legacy_commit,
             vault::save_vault,

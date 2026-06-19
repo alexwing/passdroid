@@ -38,7 +38,8 @@ import {
 } from "lucide-react";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { readFile, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { mkdir, readFile, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { appLocalDataDir, join } from "@tauri-apps/api/path";
 import appIcon from "./assets/passdroid.png";
 import Api, {
   GeneratePasswordOptions,
@@ -128,6 +129,8 @@ function App() {
   const [vaultStatus, setVaultStatus] = useState<VaultStatus | null>(null);
   const [createPassword, setCreatePassword] = useState("");
   const [createPasswordRepeat, setCreatePasswordRepeat] = useState("");
+  const [createName, setCreateName] = useState("");
+  const [isAndroid, setIsAndroid] = useState(false);
   const [unlockPassword, setUnlockPassword] = useState("");
   const [entries, setEntries] = useState<VaultEntry[]>([]);
   const [query, setQuery] = useState("");
@@ -173,6 +176,9 @@ function App() {
     Api.getPreferences()
       .then(setPreferences)
       .catch(() => setPreferences(defaultPreferences));
+    Api.isAndroid()
+      .then(setIsAndroid)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -372,6 +378,15 @@ function App() {
     if (selected) setVaultPath(selected);
   };
 
+  // App-private vault path (Android): a real, always-accessible location, so we
+  // never depend on a SAF content:// permission surviving a restart.
+  const androidVaultPath = async (name: string) => {
+    const base = await appLocalDataDir();
+    const dir = await join(base, "vaults");
+    await mkdir(dir, { recursive: true });
+    return join(dir, `${name}.pdvault`);
+  };
+
   const chooseVaultForOpen = async () => {
     const selected = await pick(() =>
       open({
@@ -379,37 +394,66 @@ function App() {
         filters: [{ name: t("vaultFile"), extensions: ["pdvault"] }],
       }),
     );
-    if (typeof selected === "string") {
+    if (typeof selected !== "string") return;
+
+    if (isAndroid) {
+      // Copy the picked file into app-private storage once (the SAF permission
+      // is valid right now), then use that copy from here on.
+      const imported = await run(async () => {
+        const contents = await readTextFile(selected);
+        const path = await androidVaultPath(vaultName(selected) || "passdroid");
+        await writeTextFile(path, contents);
+        return path;
+      });
+      if (!imported) return;
+      setVaultPath(imported);
+    } else {
       setVaultPath(selected);
-      setUnlockPassword("");
-      setScreen("unlock");
     }
+    setUnlockPassword("");
+    setScreen("unlock");
   };
 
   const createVault = async (event: FormEvent) => {
     event.preventDefault();
-    if (!vaultPath) {
-      setNotice({ kind: "error", text: t("requiredVaultPath") });
-      return;
-    }
     if (createPassword !== createPasswordRepeat) {
       setNotice({ kind: "error", text: t("passwordMismatch") });
       return;
     }
 
+    let path = vaultPath;
+    if (isAndroid) {
+      const name = createName.trim();
+      if (!name) {
+        setNotice({ kind: "error", text: t("requiredVaultName") });
+        return;
+      }
+      try {
+        path = await androidVaultPath(name);
+      } catch {
+        setNotice({ kind: "error", text: t("err_unknown") });
+        return;
+      }
+    } else if (!path) {
+      setNotice({ kind: "error", text: t("requiredVaultPath") });
+      return;
+    }
+
     const snapshot = await run(async () => {
       const snap = await Api.createVault(createPassword);
-      await writeTextFile(vaultPath, snap.contents);
+      await writeTextFile(path, snap.contents);
       return snap;
     }, "vaultCreated");
     if (snapshot) {
+      setVaultPath(path);
       setVaultStatus(snapshot.status);
-      rememberVault(vaultPath);
+      rememberVault(path);
       setEntries([]);
       setDraft(emptyEntry());
       setSelectedId("");
       setCreatePassword("");
       setCreatePasswordRepeat("");
+      setCreateName("");
       setSyncConfig(null);
       setSyncForm(defaultSync);
       setSyncState("idle");
@@ -693,7 +737,19 @@ function App() {
                 <KeyRound size={22} aria-hidden />
                 <h2>{t("newVault")}</h2>
               </div>
-              <FilePickerRow label={t("vaultFile")} path={vaultPath} onPick={chooseVaultForCreate} t={t} />
+              {isAndroid ? (
+                <label>
+                  <span>{t("vaultName")}</span>
+                  <input
+                    value={createName}
+                    onChange={(event) => setCreateName(event.target.value)}
+                    placeholder="passdroid"
+                    autoComplete="off"
+                  />
+                </label>
+              ) : (
+                <FilePickerRow label={t("vaultFile")} path={vaultPath} onPick={chooseVaultForCreate} t={t} />
+              )}
               <PasswordInput
                 label={t("masterPassword")}
                 value={createPassword}

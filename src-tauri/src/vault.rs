@@ -618,6 +618,11 @@ pub fn import_legacy_commit(
 }
 
 #[tauri::command]
+pub fn is_android() -> bool {
+    cfg!(target_os = "android")
+}
+
+#[tauri::command]
 pub fn generate_password(options: GeneratePasswordOptions) -> Result<String, String> {
     let length = options.length.clamp(8, 256);
     let mut groups: Vec<&[u8]> = Vec::new();

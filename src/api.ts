@@ -92,6 +92,7 @@ const Api = {
     invoke<VaultSnapshot>("change_master_password", { oldPassword, newPassword }),
   generatePassword: (options: GeneratePasswordOptions) =>
     invoke<string>("generate_password", { options }),
+  isAndroid: () => invoke<boolean>("is_android"),
   importLegacyPreview: (name: string, contents: number[], legacyPassword?: string) =>
     invoke<ImportPreview>("import_legacy_preview", {
       name,
