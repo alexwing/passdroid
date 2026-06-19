@@ -415,28 +415,6 @@ function App() {
           </section>
 
           <section className="start-actions">
-            <form className="panel" onSubmit={createVault}>
-              <div className="panel-heading">
-                <KeyRound size={22} aria-hidden />
-                <h2>{t("newVault")}</h2>
-              </div>
-              <FilePickerRow label={t("vaultFile")} path={vaultPath} onPick={chooseVaultForCreate} t={t} />
-              <PasswordInput
-                label={t("masterPassword")}
-                value={createPassword}
-                onChange={setCreatePassword}
-              />
-              <PasswordInput
-                label={t("repeatPassword")}
-                value={createPasswordRepeat}
-                onChange={setCreatePasswordRepeat}
-              />
-              <button className="primary-button" type="submit" disabled={busy}>
-                <Save size={18} aria-hidden />
-                {t("createVault")}
-              </button>
-            </form>
-
             <div className="panel">
               <div className="panel-heading">
                 <FolderOpen size={22} aria-hidden />
@@ -472,6 +450,28 @@ function App() {
                 </div>
               )}
             </div>
+
+            <form className="panel" onSubmit={createVault}>
+              <div className="panel-heading">
+                <KeyRound size={22} aria-hidden />
+                <h2>{t("newVault")}</h2>
+              </div>
+              <FilePickerRow label={t("vaultFile")} path={vaultPath} onPick={chooseVaultForCreate} t={t} />
+              <PasswordInput
+                label={t("masterPassword")}
+                value={createPassword}
+                onChange={setCreatePassword}
+              />
+              <PasswordInput
+                label={t("repeatPassword")}
+                value={createPasswordRepeat}
+                onChange={setCreatePasswordRepeat}
+              />
+              <button className="primary-button" type="submit" disabled={busy}>
+                <Save size={18} aria-hidden />
+                {t("createVault")}
+              </button>
+            </form>
           </section>
         </main>
       )}
