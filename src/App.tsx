@@ -13,6 +13,7 @@ import {
   Lock,
   Moon,
   Plus,
+  RefreshCw,
   Save,
   Search,
   Settings,
@@ -28,6 +29,7 @@ import Api, {
   GeneratePasswordOptions,
   ImportPreview,
   Preferences,
+  SyncConfig,
   VaultEntry,
   VaultStatus,
 } from "./api";
@@ -37,6 +39,17 @@ type Screen = "start" | "unlock" | "vault";
 type Notice = { kind: "success" | "error"; text: string } | null;
 
 const defaultPreferences: Preferences = { theme: "system", language: "system", recentVaults: [] };
+
+const defaultSync: SyncConfig = {
+  enabled: false,
+  protocol: "ftp",
+  host: "",
+  port: 21,
+  username: "",
+  password: "",
+  remoteDir: "vault",
+  remoteFile: "passdroid.pdvault",
+};
 
 const vaultLabel = (path: string) => path.split(/[\\/]/).pop() || path;
 
@@ -88,6 +101,8 @@ function App() {
   const [legacyPath, setLegacyPath] = useState("");
   const [legacyPassword, setLegacyPassword] = useState("");
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [syncConfig, setSyncConfig] = useState<SyncConfig | null>(null);
+  const [syncForm, setSyncForm] = useState<SyncConfig>(defaultSync);
 
   const t = useMemo(() => createTranslator(preferences.language), [preferences.language]);
 
@@ -175,6 +190,40 @@ function App() {
     setScreen("unlock");
   };
 
+  // Best-effort background sync (on unlock / after saves). Failures (offline,
+  // not configured) are swallowed so they never block the local workflow.
+  const autoSync = async () => {
+    try {
+      await Api.syncNow();
+      const list = await Api.listEntries();
+      setEntries(list);
+    } catch {
+      /* ignored */
+    }
+  };
+
+  const maybeAutoSync = () => {
+    if (syncConfig?.enabled) void autoSync();
+  };
+
+  const runSyncNow = async () => {
+    const result = await run(() => Api.syncNow(), "syncDone");
+    if (result) {
+      const list = await run(() => Api.listEntries());
+      if (list) setEntries(list);
+    }
+  };
+
+  const saveSyncConfig = async () => {
+    const status = await run(() => Api.setSyncConfig(syncForm), "syncSaved");
+    if (status) {
+      setSyncConfig(syncForm);
+      setVaultStatus(status);
+    }
+  };
+
+  const testSyncConnection = () => run(() => Api.testSync(syncForm), "syncOk");
+
   const chooseVaultForCreate = async () => {
     const selected = await save({
       defaultPath: "passdroid.pdvault",
@@ -218,6 +267,8 @@ function App() {
       setSelectedId("");
       setCreatePassword("");
       setCreatePasswordRepeat("");
+      setSyncConfig(null);
+      setSyncForm(defaultSync);
       setScreen("vault");
     }
   };
@@ -237,6 +288,10 @@ function App() {
       setDraft(emptyEntry());
       setSelectedId("");
       setScreen("vault");
+      const cfg = await Api.getSyncConfig().catch(() => null);
+      setSyncConfig(cfg);
+      setSyncForm(cfg ?? defaultSync);
+      if (cfg?.enabled) void autoSync();
     }
   };
 
@@ -251,6 +306,8 @@ function App() {
     setQuery("");
     setVaultStatus(null);
     setVaultPath("");
+    setSyncConfig(null);
+    setSyncForm(defaultSync);
     setScreen("start");
   };
 
@@ -270,6 +327,7 @@ function App() {
       const created = savedEntries.find((entry) => !knownIds.has(entry.id));
       const nextId = existingId || created?.id || "";
       if (nextId) setSelectedId(nextId);
+      maybeAutoSync();
     }
   };
 
@@ -280,6 +338,7 @@ function App() {
       setEntries(savedEntries);
       setSelectedId("");
       setDraft(emptyEntry());
+      maybeAutoSync();
     }
   };
 
@@ -383,6 +442,7 @@ function App() {
     if (savedEntries) {
       setEntries(savedEntries);
       closeImport();
+      maybeAutoSync();
     }
   };
 
@@ -695,6 +755,88 @@ function App() {
               {t("apply")}
             </button>
           </form>
+
+          <section className="stack-form">
+            <h3>{t("sync")}</h3>
+            <p className="sync-warning">{t("syncPlainWarning")}</p>
+            <Toggle
+              label={t("syncEnabled")}
+              checked={syncForm.enabled}
+              onChange={(enabled) => setSyncForm({ ...syncForm, enabled })}
+            />
+            <div className="settings-grid">
+              <label>
+                <span>{t("syncHost")}</span>
+                <input
+                  value={syncForm.host}
+                  onChange={(event) => setSyncForm({ ...syncForm, host: event.target.value })}
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                <span>{t("syncPort")}</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={syncForm.port}
+                  onChange={(event) => setSyncForm({ ...syncForm, port: Number(event.target.value) })}
+                />
+              </label>
+              <label>
+                <span>{t("syncUser")}</span>
+                <input
+                  value={syncForm.username}
+                  onChange={(event) => setSyncForm({ ...syncForm, username: event.target.value })}
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                <span>{t("syncPassword")}</span>
+                <input
+                  type="password"
+                  value={syncForm.password}
+                  onChange={(event) => setSyncForm({ ...syncForm, password: event.target.value })}
+                  autoComplete="new-password"
+                />
+              </label>
+              <label>
+                <span>{t("syncDir")}</span>
+                <input
+                  value={syncForm.remoteDir}
+                  onChange={(event) => setSyncForm({ ...syncForm, remoteDir: event.target.value })}
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                <span>{t("syncFile")}</span>
+                <input
+                  value={syncForm.remoteFile}
+                  onChange={(event) => setSyncForm({ ...syncForm, remoteFile: event.target.value })}
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+            <div className="sync-actions">
+              <button className="secondary-button" type="button" onClick={testSyncConnection} disabled={busy}>
+                <Globe2 size={18} aria-hidden />
+                {t("syncTest")}
+              </button>
+              <button className="primary-button" type="button" onClick={saveSyncConfig} disabled={busy}>
+                <Save size={18} aria-hidden />
+                {t("syncSaveConfig")}
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={runSyncNow}
+                disabled={busy || !syncConfig?.enabled}
+              >
+                <RefreshCw size={18} aria-hidden />
+                {t("syncNow")}
+              </button>
+            </div>
+          </section>
         </Modal>
       )}
 

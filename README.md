@@ -82,6 +82,26 @@ with the old password, shows a preview, and lets you commit the entries into the
 
 The legacy crypto lives only in `src-tauri/src/legacy.rs` and is never used to create new data.
 
+## Remote sync
+
+The vault is a single encrypted file, so it can be synced as-is. Two options:
+
+- **Built-in FTP sync** (Settings → *Sync*): the app pulls the remote vault when you
+  unlock and pushes it after each change, merging by `id`/`updated_at`. The FTP
+  connection settings (host, port, user, password, folder, file name) are stored
+  **encrypted inside the vault**, protected by your master password, so they travel
+  with it and are never written to disk in clear. On upload the app also drops a
+  deny-all `.htaccess` next to the vault so the folder is not served over the web.
+
+  > Plain FTP transmits the login in clear text — the vault *content* stays encrypted
+  > (XChaCha20-Poly1305), but use a **dedicated, least-privilege FTP account**. FTPS/SFTP
+  > is a planned hardening step.
+
+- **Folder sync (recommended on Android)**: keep the `.pdvault` in a folder synced by
+  **[Syncthing](https://syncthing.net/)** (or FolderSync). This works where third-party
+  apps cannot tap into Google Drive's auto-sync on Android, and keeps the same
+  single-file model with no servable web copy.
+
 ## Testing
 
 ```bash

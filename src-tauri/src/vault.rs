@@ -17,9 +17,10 @@ use crate::{
     },
     legacy,
     models::{
-        GeneratePasswordOptions, ImportPreview, ImportPreviewEntry, VaultData, VaultEntry,
-        VaultEnvelope, VaultHeader, VaultStatus,
+        GeneratePasswordOptions, ImportPreview, ImportPreviewEntry, SyncConfig, SyncResult,
+        VaultData, VaultEntry, VaultEnvelope, VaultHeader, VaultStatus,
     },
+    sync,
 };
 
 pub type SharedVaultManager = Mutex<VaultManager>;
@@ -266,6 +267,64 @@ impl VaultManager {
         save_session(session)?;
         Ok(visible_entries(&session.data.entries))
     }
+
+    pub fn get_sync_config(&self) -> Result<Option<SyncConfig>, String> {
+        let session = self.session.as_ref().ok_or_else(|| "vault_locked".to_string())?;
+        Ok(read_sync_config(&session.data))
+    }
+
+    pub fn set_sync_config(&mut self, config: SyncConfig) -> Result<VaultStatus, String> {
+        let session = self.session.as_mut().ok_or_else(|| "vault_locked".to_string())?;
+        if !session.data.settings.is_object() {
+            session.data.settings = serde_json::json!({});
+        }
+        session.data.settings["sync"] =
+            serde_json::to_value(&config).map_err(|e| e.to_string())?;
+        save_session(session)
+    }
+
+    /// Pull the remote vault, merge it with the local one, persist, then push.
+    pub fn sync_now(&mut self) -> Result<SyncResult, String> {
+        let session = self.session.as_mut().ok_or_else(|| "vault_locked".to_string())?;
+        let config = read_sync_config(&session.data).ok_or_else(|| "sync_not_configured".to_string())?;
+        if !config.enabled {
+            return Err("sync_disabled".to_string());
+        }
+
+        let pulled = match sync::download(&config)? {
+            Some(bytes) => {
+                let envelope: VaultEnvelope =
+                    serde_json::from_slice(&bytes).map_err(|_| "sync_remote_invalid".to_string())?;
+                if envelope.header.vault_id != session.header.vault_id {
+                    return Err("sync_vault_mismatch".to_string());
+                }
+                let remote: VaultData =
+                    open_payload(&envelope.payload, &envelope.header, &session.key[..])
+                        .map_err(|_| "sync_decrypt_failed".to_string())?;
+                let merged = merge_entries(&session.base_entries, &remote.entries, &session.data.entries);
+                session.data.entries = merged;
+                session.data.revision = session.data.revision.max(remote.revision);
+                true
+            }
+            None => false,
+        };
+
+        let status = persist_session(session)?;
+        let bytes = fs::read(&session.path).map_err(|e| e.to_string())?;
+        sync::upload(&config, &bytes)?;
+
+        Ok(SyncResult {
+            pulled,
+            revision: status.revision,
+            entry_count: status.entry_count,
+        })
+    }
+}
+
+fn read_sync_config(data: &VaultData) -> Option<SyncConfig> {
+    data.settings
+        .get("sync")
+        .and_then(|value| serde_json::from_value(value.clone()).ok())
 }
 
 // ---------------------------------------------------------------------------
@@ -350,6 +409,29 @@ pub fn export_legacy_xml(
     state: State<'_, SharedVaultManager>,
 ) -> Result<usize, String> {
     manager!(state).export_legacy_xml(path)
+}
+
+#[tauri::command]
+pub fn get_sync_config(state: State<'_, SharedVaultManager>) -> Result<Option<SyncConfig>, String> {
+    manager!(state).get_sync_config()
+}
+
+#[tauri::command]
+pub fn set_sync_config(
+    config: SyncConfig,
+    state: State<'_, SharedVaultManager>,
+) -> Result<VaultStatus, String> {
+    manager!(state).set_sync_config(config)
+}
+
+#[tauri::command]
+pub fn test_sync(config: SyncConfig) -> Result<(), String> {
+    sync::test_connection(&config)
+}
+
+#[tauri::command]
+pub fn sync_now(state: State<'_, SharedVaultManager>) -> Result<SyncResult, String> {
+    manager!(state).sync_now()
 }
 
 #[tauri::command]

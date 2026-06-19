@@ -2,6 +2,7 @@ mod crypto;
 mod legacy;
 mod models;
 mod preferences;
+mod sync;
 mod vault;
 
 use std::sync::Mutex;
@@ -29,6 +30,10 @@ pub fn run() {
             vault::save_vault,
             vault::export_vault_copy,
             vault::export_legacy_xml,
+            vault::get_sync_config,
+            vault::set_sync_config,
+            vault::test_sync,
+            vault::sync_now,
             preferences::get_preferences,
             preferences::save_preferences
         ])

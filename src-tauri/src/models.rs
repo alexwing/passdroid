@@ -132,6 +132,42 @@ pub struct ImportPreview {
     pub entries: Vec<ImportPreviewEntry>,
 }
 
+/// Remote sync configuration. Stored ENCRYPTED inside the vault payload
+/// (under `settings.sync`), so the FTP credentials are protected by the master
+/// password and travel with the vault.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub protocol: String,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default = "default_ftp_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
+    #[serde(default)]
+    pub remote_dir: String,
+    #[serde(default)]
+    pub remote_file: String,
+}
+
+fn default_ftp_port() -> u16 {
+    21
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncResult {
+    pub pulled: bool,
+    pub revision: u64,
+    pub entry_count: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Preferences {
