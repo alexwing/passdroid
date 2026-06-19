@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   Clock,
   Copy,
   Download,
@@ -79,6 +80,9 @@ function App() {
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<VaultEntry>(emptyEntry());
   const [selectedId, setSelectedId] = useState("");
+  // On narrow screens the editor opens as a full-screen overlay instead of a
+  // panel below the list (which would require scrolling to reach).
+  const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -290,6 +294,7 @@ function App() {
       setSyncConfig(null);
       setSyncForm(defaultSync);
       setSyncState("idle");
+      setEditing(false);
       setScreen("vault");
     }
   };
@@ -308,6 +313,7 @@ function App() {
       setUnlockPassword("");
       setDraft(emptyEntry());
       setSelectedId("");
+      setEditing(false);
       setScreen("vault");
       const cfg = await Api.getSyncConfig().catch(() => null);
       setSyncConfig(cfg);
@@ -330,6 +336,7 @@ function App() {
     setSyncConfig(null);
     setSyncForm(defaultSync);
     setSyncState("idle");
+    setEditing(false);
     setScreen("start");
   };
 
@@ -368,6 +375,7 @@ function App() {
       setEntries(snapshot.entries);
       setSelectedId("");
       setDraft(emptyEntry());
+      setEditing(false);
       maybeAutoSync();
     }
   };
@@ -666,6 +674,7 @@ function App() {
                 onClick={() => {
                   setSelectedId("");
                   setDraft(emptyEntry());
+                  setEditing(true);
                 }}
               >
                 <Plus size={18} aria-hidden />
@@ -677,7 +686,10 @@ function App() {
                     className={`entry-row ${entry.id === selectedId ? "active" : ""}`}
                     key={entry.id}
                     type="button"
-                    onClick={() => setSelectedId(entry.id)}
+                    onClick={() => {
+                      setSelectedId(entry.id);
+                      setEditing(true);
+                    }}
                   >
                     <span>{entry.title}</span>
                     <small>{entry.username || entry.url}</small>
@@ -691,7 +703,11 @@ function App() {
               </div>
             </aside>
 
-            <section className="editor-panel">
+            <section className={`editor-panel ${editing ? "editing" : ""}`}>
+              <button className="ghost-button editor-back" type="button" onClick={() => setEditing(false)}>
+                <ArrowLeft size={18} aria-hidden />
+                {t("back")}
+              </button>
               <form className="entry-form" onSubmit={saveEntry}>
                 <label>
                   <span>{t("title")}</span>

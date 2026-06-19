@@ -20,6 +20,7 @@ const es = {
   delete: "Eliminar",
   cancel: "Cancelar",
   close: "Cerrar",
+  back: "Atrás",
   copy: "Copiar",
   copied: "Copiado",
   title: "Título",

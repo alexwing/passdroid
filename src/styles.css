@@ -444,6 +444,11 @@ textarea:focus {
   align-self: end;
 }
 
+/* Shown only on narrow screens, where the editor is a full-screen overlay. */
+.editor-back {
+  display: none;
+}
+
 .form-actions {
   gap: 10px;
   justify-content: flex-end;
@@ -775,6 +780,28 @@ textarea:focus {
 
   .entry-sidebar {
     min-height: 280px;
+  }
+
+  /* The editor becomes a full-screen overlay opened from the list, instead of a
+     panel below it that needs scrolling. */
+  .editor-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 25;
+    display: none;
+    background: var(--bg);
+    overflow: auto;
+  }
+
+  .editor-panel.editing {
+    display: flex;
+  }
+
+  .editor-back {
+    display: inline-flex;
+    align-self: flex-start;
+    gap: 8px;
+    margin-bottom: 14px;
   }
 }
 

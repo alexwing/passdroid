@@ -22,6 +22,7 @@ const en: Record<keyof typeof es, string> = {
   delete: "Delete",
   cancel: "Cancel",
   close: "Close",
+  back: "Back",
   copy: "Copy",
   copied: "Copied",
   title: "Title",
