@@ -404,7 +404,7 @@ function App() {
         const path = await androidVaultPath(vaultName(selected) || "passdroid");
         await writeTextFile(path, contents);
         return path;
-      });
+      }, "vaultImported");
       if (!imported) return;
       setVaultPath(imported);
     } else {
@@ -698,14 +698,11 @@ function App() {
 
           <section className="start-actions">
             <div className="panel">
-              <div className="panel-heading">
-                <FolderOpen size={22} aria-hidden />
-                <h2>{t("existingVault")}</h2>
-              </div>
               <button className="secondary-button full" type="button" onClick={chooseVaultForOpen} disabled={busy}>
-                <FolderOpen size={18} aria-hidden />
-                {t("openVault")}
+                {isAndroid ? <Import size={18} aria-hidden /> : <FolderOpen size={18} aria-hidden />}
+                {isAndroid ? t("importVault") : t("openVault")}
               </button>
+              {isAndroid && <p className="hint">{t("importAndroidHint")}</p>}
               {preferences.recentVaults.length > 0 && (
                 <div className="recent-vaults">
                   <h3>{t("recentVaults")}</h3>
