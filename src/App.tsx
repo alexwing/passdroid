@@ -1,7 +1,11 @@
 import {
   ArrowLeft,
+  Briefcase,
+  Building2,
   Clock,
+  Cloud,
   Copy,
+  CreditCard,
   Download,
   Eye,
   EyeOff,
@@ -9,24 +13,35 @@ import {
   FileText,
   FolderOpen,
   Globe2,
+  Heart,
   Import,
   KeyRound,
+  Landmark,
   Lock,
+  type LucideIcon,
+  Mail,
   Moon,
+  Palette,
   Plus,
   RefreshCw,
   Save,
   Search,
+  Server,
   Settings,
+  ShieldCheck,
   Sparkles,
+  Star,
   Sun,
   Trash2,
+  User,
   Wand2,
+  Wifi,
   X,
 } from "lucide-react";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFile, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import appIcon from "./assets/passdroid.png";
 import Api, {
   GeneratePasswordOptions,
   ImportPreview,
@@ -40,7 +55,34 @@ import { createTranslator, resolveLanguage, ThemePreference, TranslationKey } fr
 type Screen = "start" | "unlock" | "vault";
 type Notice = { kind: "success" | "error"; text: string } | null;
 
-const defaultPreferences: Preferences = { theme: "system", language: "system", recentVaults: [] };
+const defaultPreferences: Preferences = {
+  theme: "system",
+  language: "system",
+  recentVaults: [],
+  vaultIcons: {},
+};
+
+// Curated icon set a user can assign to a vault. The chosen key is stored in
+// preferences (not in the vault) so it shows on the start screen while locked.
+const VAULT_ICONS: Record<string, LucideIcon> = {
+  safe: FileLock2,
+  lock: Lock,
+  key: KeyRound,
+  mail: Mail,
+  globe: Globe2,
+  card: CreditCard,
+  bank: Landmark,
+  building: Building2,
+  wifi: Wifi,
+  server: Server,
+  user: User,
+  shield: ShieldCheck,
+  cloud: Cloud,
+  work: Briefcase,
+  star: Star,
+  heart: Heart,
+};
+const DEFAULT_VAULT_ICON = "safe";
 
 const defaultSync: SyncConfig = {
   enabled: false,
@@ -53,10 +95,20 @@ const defaultSync: SyncConfig = {
   remoteFile: "passdroid.pdvault",
 };
 
-const vaultLabel = (path: string) => path.split(/[\\/]/).pop() || path;
+// Base file name from a real path OR an Android content:// URI (which encodes
+// the path, e.g. .../document/primary%3ADocuments%2Fpassdroid.pdvault).
+const vaultLabel = (path: string) => {
+  let decoded = path;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    /* keep raw on malformed encoding */
+  }
+  return decoded.split(/[\\/:]/).filter(Boolean).pop() || path;
+};
 
-// File name without directory or extension, for the recents list.
-const vaultName = (path: string) => vaultLabel(path).replace(/\.[^./\\]+$/, "");
+// File name without directory or extension, for the recents list and unlock screen.
+const vaultName = (path: string) => vaultLabel(path).replace(/\.[^.]+$/, "");
 
 const emptyEntry = (): VaultEntry => ({
   id: "",
@@ -93,6 +145,7 @@ function App() {
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [iconPickerPath, setIconPickerPath] = useState<string | null>(null);
   const [changePasswordForm, setChangePasswordForm] = useState({
     oldPassword: "",
     newPassword: "",
@@ -213,6 +266,16 @@ function App() {
       ...preferences,
       recentVaults: preferences.recentVaults.filter((item) => item !== path),
     });
+  };
+
+  const getVaultIcon = (path: string) => preferences.vaultIcons[path] ?? DEFAULT_VAULT_ICON;
+
+  const setVaultIcon = (path: string, icon: string) => {
+    persistPreferences({
+      ...preferences,
+      vaultIcons: { ...preferences.vaultIcons, [path]: icon },
+    });
+    setIconPickerPath(null);
   };
 
   const openRecent = (path: string) => {
@@ -568,10 +631,8 @@ function App() {
     <div className="app-shell">
       {screen === "start" && (
         <main className="start-layout">
-          <section className="brand-panel">
-            <div className="brand-mark">
-              <FileLock2 size={42} aria-hidden />
-            </div>
+          <section className="brand">
+            <img className="brand-icon" src={appIcon} alt="" width={44} height={44} />
             <h1>{t("appName")}</h1>
           </section>
 
@@ -592,8 +653,17 @@ function App() {
                     {preferences.recentVaults.map((path) => (
                       <div className="recent-row" key={path}>
                         <button className="recent-open" type="button" onClick={() => openRecent(path)} title={vaultName(path)}>
-                          <Clock size={16} aria-hidden />
+                          <VaultGlyph icon={getVaultIcon(path)} size={18} />
                           <span className="recent-name">{vaultName(path)}</span>
+                        </button>
+                        <button
+                          className="icon-button"
+                          type="button"
+                          onClick={() => setIconPickerPath(path)}
+                          title={t("chooseIcon")}
+                          aria-label={t("chooseIcon")}
+                        >
+                          <Palette size={16} aria-hidden />
                         </button>
                         <button
                           className="icon-button"
@@ -643,7 +713,10 @@ function App() {
               <Lock size={22} aria-hidden />
               <h2>{t("unlock")}</h2>
             </div>
-            <div className="path-chip">{vaultPath}</div>
+            <div className="vault-chip">
+              <VaultGlyph icon={getVaultIcon(vaultPath)} size={20} />
+              <span>{vaultName(vaultPath)}</span>
+            </div>
             <PasswordInput
               label={t("masterPassword")}
               value={unlockPassword}
@@ -1064,8 +1137,31 @@ function App() {
           </div>
         </Modal>
       )}
+
+      {iconPickerPath !== null && (
+        <Modal title={t("chooseIcon")} onClose={() => setIconPickerPath(null)} t={t}>
+          <div className="icon-grid">
+            {Object.keys(VAULT_ICONS).map((key) => (
+              <button
+                key={key}
+                type="button"
+                className={`icon-choice ${getVaultIcon(iconPickerPath) === key ? "active" : ""}`}
+                onClick={() => setVaultIcon(iconPickerPath, key)}
+                aria-label={key}
+              >
+                <VaultGlyph icon={key} size={22} />
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
     </div>
   );
+}
+
+function VaultGlyph({ icon, size }: { icon: string; size: number }) {
+  const Icon = VAULT_ICONS[icon] ?? FileLock2;
+  return <Icon size={size} aria-hidden />;
 }
 
 function PasswordInput({

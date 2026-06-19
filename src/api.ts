@@ -34,6 +34,7 @@ export interface Preferences {
   theme: ThemePreference;
   language: LanguagePreference;
   recentVaults: string[];
+  vaultIcons: Record<string, string>;
 }
 
 export interface GeneratePasswordOptions {

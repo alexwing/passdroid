@@ -14,6 +14,7 @@ const es = {
   existingVault: "Vault existente",
   recentVaults: "Vaults recientes",
   removeFromList: "Quitar de la lista",
+  chooseIcon: "Elegir icono",
   search: "Buscar",
   newEntry: "Nueva entrada",
   save: "Guardar",

@@ -69,57 +69,45 @@ button:disabled {
   min-height: 100vh;
 }
 
-.start-layout,
 .unlock-layout {
   display: grid;
   min-height: 100vh;
   padding: 32px;
-  gap: 24px;
+  place-items: center;
 }
 
 .start-layout {
-  grid-template-columns: minmax(280px, 0.75fr) minmax(320px, 1.25fr);
-  align-items: stretch;
-}
-
-.unlock-layout {
-  place-items: center;
-}
-
-.brand-panel {
   display: flex;
-  min-height: 520px;
   flex-direction: column;
-  justify-content: flex-end;
-  padding: 34px;
-  border: 1px solid var(--border);
-  background:
-    linear-gradient(160deg, rgba(15, 143, 126, 0.18), rgba(196, 107, 55, 0.14)),
-    var(--surface);
-  box-shadow: var(--shadow);
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 32px;
+  gap: 22px;
 }
 
-.brand-panel h1 {
-  max-width: 8ch;
-  margin: 20px 0 0;
-  font-size: 46px;
-  line-height: 1;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 22%;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 28px;
   letter-spacing: 0;
-}
-
-.brand-mark {
-  display: grid;
-  width: 78px;
-  height: 78px;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--primary) 36%, var(--border));
-  background: var(--primary-soft);
-  color: var(--primary-strong);
 }
 
 .start-actions {
   display: grid;
-  align-content: center;
+  width: 100%;
+  max-width: 520px;
   gap: 18px;
 }
 
@@ -271,12 +259,24 @@ textarea:focus {
   color: var(--text);
 }
 
-.path-chip {
-  overflow: hidden;
+.vault-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 10px 12px;
   border: 1px solid var(--border);
   background: var(--surface-2);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.vault-chip svg {
+  flex-shrink: 0;
   color: var(--muted);
+}
+
+.vault-chip span {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -654,6 +654,32 @@ textarea:focus {
   white-space: nowrap;
 }
 
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(54px, 1fr));
+  gap: 10px;
+}
+
+.icon-choice {
+  display: grid;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.icon-choice:hover {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: var(--primary-soft);
+}
+
+.icon-choice.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
 .export-options {
   display: grid;
   gap: 12px;
@@ -746,18 +772,6 @@ textarea:focus {
 }
 
 @media (max-width: 900px) {
-  .start-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .brand-panel {
-    min-height: 260px;
-  }
-
-  .brand-panel h1 {
-    font-size: 40px;
-  }
-
   .vault-layout {
     height: auto;
     min-height: calc(100vh - 72px);

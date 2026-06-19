@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -193,6 +195,10 @@ pub struct Preferences {
     pub language: String,
     #[serde(default)]
     pub recent_vaults: Vec<String>,
+    /// Per-vault icon keys (vault path/URI -> icon name), kept here rather than
+    /// inside the vault so the icon can be shown while the vault is still locked.
+    #[serde(default)]
+    pub vault_icons: HashMap<String, String>,
 }
 
 impl Default for Preferences {
@@ -201,6 +207,7 @@ impl Default for Preferences {
             theme: "system".to_string(),
             language: "system".to_string(),
             recent_vaults: Vec::new(),
+            vault_icons: HashMap::new(),
         }
     }
 }
