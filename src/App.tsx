@@ -6,6 +6,7 @@ import {
   Copy,
   CreditCard,
   Download,
+  ExternalLink,
   Eye,
   EyeOff,
   FileLock2,
@@ -39,6 +40,7 @@ import {
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { mkdir, readFile, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { appLocalDataDir, join } from "@tauri-apps/api/path";
 import appIcon from "./assets/passdroid.png";
 import Api, {
@@ -220,6 +222,13 @@ function App() {
     document.addEventListener("visibilitychange", handleHidden);
     return () => document.removeEventListener("visibilitychange", handleHidden);
   }, [screen]);
+
+  // Toasts auto-dismiss after 5s (and can be closed manually).
+  useEffect(() => {
+    if (!notice) return;
+    const id = window.setTimeout(() => setNotice(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [notice]);
 
   const filteredEntries = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -571,10 +580,29 @@ function App() {
     }
   };
 
-  const copyPassword = async () => {
-    if (!draft.password) return;
-    await navigator.clipboard.writeText(draft.password);
+  const copyToClipboard = async (value: string) => {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
     setNotice({ kind: "success", text: t("copied") });
+  };
+
+  const isValidUrl = (value: string) => {
+    try {
+      const parsed = new URL(value.trim());
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  };
+
+  const openDraftUrl = async () => {
+    const url = draft.url.trim();
+    if (!isValidUrl(url)) return;
+    try {
+      await openUrl(url);
+    } catch {
+      setNotice({ kind: "error", text: t("err_unknown") });
+    }
   };
 
   const exportCopy = async () => {
@@ -817,7 +845,7 @@ function App() {
               <VaultGlyph icon={vaultStatus?.icon || DEFAULT_VAULT_ICON} size={26} />
               <div>
                 <strong>{vaultName(vaultPath)}</strong>
-                <span>{entries.length}</span>
+                <span>{entries.length} {entries.length === 1 ? t("entry") : t("entries")}</span>
               </div>
             </div>
             <div className="topbar-actions">
@@ -921,11 +949,16 @@ function App() {
                 </label>
                 <label>
                   <span>{t("username")}</span>
-                  <input
-                    value={draft.username}
-                    onChange={(event) => setDraft({ ...draft, username: event.target.value })}
-                    autoComplete="username"
-                  />
+                  <div className="password-row">
+                    <input
+                      value={draft.username}
+                      onChange={(event) => setDraft({ ...draft, username: event.target.value })}
+                      autoComplete="username"
+                    />
+                    <button className="icon-button" type="button" title={t("copy")} aria-label={t("copy")} onClick={() => copyToClipboard(draft.username)}>
+                      <Copy size={18} aria-hidden />
+                    </button>
+                  </div>
                 </label>
                 <label>
                   <span>{t("password")}</span>
@@ -939,18 +972,30 @@ function App() {
                     <button className="icon-button" type="button" title={t("password")} aria-label={t("password")} onClick={() => setShowPassword((value) => !value)}>
                       {showPassword ? <EyeOff size={18} aria-hidden /> : <Eye size={18} aria-hidden />}
                     </button>
-                    <button className="icon-button" type="button" title={t("copy")} aria-label={t("copy")} onClick={copyPassword}>
+                    <button className="icon-button" type="button" title={t("copy")} aria-label={t("copy")} onClick={() => copyToClipboard(draft.password)}>
                       <Copy size={18} aria-hidden />
                     </button>
                   </div>
                 </label>
                 <label>
                   <span>{t("url")}</span>
-                  <input
-                    value={draft.url}
-                    onChange={(event) => setDraft({ ...draft, url: event.target.value })}
-                    autoComplete="url"
-                  />
+                  <div className="password-row">
+                    <input
+                      value={draft.url}
+                      onChange={(event) => setDraft({ ...draft, url: event.target.value })}
+                      autoComplete="url"
+                    />
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title={t("openUrl")}
+                      aria-label={t("openUrl")}
+                      onClick={openDraftUrl}
+                      disabled={!isValidUrl(draft.url)}
+                    >
+                      <ExternalLink size={18} aria-hidden />
+                    </button>
+                  </div>
                 </label>
                 <label className="notes-field">
                   <span>{t("notes")}</span>
@@ -977,8 +1022,13 @@ function App() {
 
       {notice && (
         <div className={`notice ${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
-          <span>{notice.kind === "error" ? t("error") : notice.text}</span>
-          {notice.kind === "error" && <p>{notice.text}</p>}
+          <div className="notice-body">
+            <span>{notice.kind === "error" ? t("error") : notice.text}</span>
+            {notice.kind === "error" && <p>{notice.text}</p>}
+          </div>
+          <button className="notice-close" type="button" onClick={() => setNotice(null)} aria-label={t("close")} title={t("close")}>
+            <X size={16} aria-hidden />
+          </button>
         </div>
       )}
 

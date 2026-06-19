@@ -464,14 +464,38 @@ textarea:focus {
 
 .notice {
   position: fixed;
-  right: 18px;
+  left: 50%;
   bottom: 18px;
+  transform: translateX(-50%);
   z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: max-content;
   max-width: min(420px, calc(100vw - 36px));
-  padding: 13px 15px;
+  padding: 12px 14px;
   border: 1px solid var(--border);
   background: var(--surface);
   box-shadow: var(--shadow);
+}
+
+.notice-body {
+  min-width: 0;
+}
+
+.notice-close {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.notice-close:hover {
+  color: var(--text);
 }
 
 .notice.success {
