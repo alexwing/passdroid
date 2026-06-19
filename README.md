@@ -11,8 +11,28 @@ application. It ships as a desktop app (Windows/macOS/Linux) and an Android app 
 codebase.
 
 Secrets never touch a database or plaintext file: the vault is a single encrypted `.pdvault`
-file that the user places wherever they like — including a folder synced by Google Drive,
-Dropbox, OneDrive, Syncthing, Nextcloud, or an SMB share — for multi-device use.
+file. On desktop you keep it wherever you like (including a folder synced by Google Drive,
+Dropbox, OneDrive, Syncthing, Nextcloud or an SMB share); on Android it lives in the app's
+private storage and syncs across devices over the built-in FTP sync.
+
+## Features
+
+- **Vault management** — create, unlock and lock vaults; add / edit / delete entries (title,
+  username, password, URL, notes) with instant search.
+- **Password generator** — length plus upper/lower/number/symbol toggles.
+- **Per-vault icon** — choose an icon from a curated set; it is stored inside the vault (so it
+  syncs across devices) and shown on the start, unlock and vault screens.
+- **Remote sync over FTP** — optional. On open, if the server copy is newer it offers to download
+  and merge it; after each change it pushes, merging by `id` / `updated_at` (see *Remote sync*).
+- **Recent vaults** — re-open quickly from the start screen (shown by name).
+- **Import** — migrate from the original Passdroid app (cleartext XML, encrypted `sqt`, or a
+  `password.db` SQLite database).
+- **Export** — an encrypted `.pdvault` copy, or a legacy-compatible (unencrypted) XML.
+- **Security hardening** — screenshots / screen-recording are blocked and the recents thumbnail is
+  blanked (Android `FLAG_SECURE`); the vault auto-locks when the app goes to the background and
+  asks for that vault's master password again on return.
+- **UX** — light / dark / system themes, Spanish / English, copy username & password, open a valid
+  URL in the browser, responsive desktop layout with a full-screen entry editor on mobile.
 
 ## Security model
 
@@ -22,9 +42,12 @@ Dropbox, OneDrive, Syncthing, Nextcloud, or an SMB share — for multi-device us
 - **Encryption:** XChaCha20-Poly1305 (AEAD). The visible JSON header is authenticated as
   associated data (AAD), so tampering with it is detected.
 - **At rest:** derived keys are wrapped in `zeroize` and wiped on lock.
-- **Sync conflicts:** on save, if the file changed since unlock, both revisions are decrypted and
-  merged per `entry.id`/`updated_at`. A genuine clash on the same entry produces a duplicate
-  marked as a conflict instead of losing data.
+- **Device protection (Android):** `FLAG_SECURE` blocks screenshots / screen recording and blanks
+  the app preview in the recents switcher; the vault auto-locks on background and requires the
+  master password again on return.
+- **Sync conflicts:** when syncing, both revisions are decrypted and merged per `entry.id` /
+  `updated_at`. A genuine clash on the same entry produces a duplicate marked as a conflict
+  instead of losing data.
 
 ### Vault file format (`passdroid-vault-v1`)
 
@@ -88,23 +111,25 @@ The legacy crypto lives only in `src-tauri/src/legacy.rs` and is never used to c
 
 ## Remote sync
 
-The vault is a single encrypted file, so it can be synced as-is. Two options:
+The vault is a single encrypted file, so it syncs as a blob.
 
-- **Built-in FTP sync** (Settings → *Sync*): the app pulls the remote vault when you
-  unlock and pushes it after each change, merging by `id`/`updated_at`. The FTP
-  connection settings (host, port, user, password, folder, file name) are stored
-  **encrypted inside the vault**, protected by your master password, so they travel
-  with it and are never written to disk in clear. On upload the app also drops a
-  deny-all `.htaccess` next to the vault so the folder is not served over the web.
+- **Built-in FTP sync** (Settings → *Sync*): connection settings (host, port, user, password,
+  folder, file name) are stored **encrypted inside the vault**, protected by your master password.
+  When you open a vault, if the server copy is newer the app offers to **download and merge** it;
+  after every change it pushes the merged result, reconciling by `id` / `updated_at`. On upload it
+  also drops a deny-all `.htaccess` next to the vault so the folder is never served over the web.
 
   > Plain FTP transmits the login in clear text — the vault *content* stays encrypted
-  > (XChaCha20-Poly1305), but use a **dedicated, least-privilege FTP account**. FTPS/SFTP
-  > is a planned hardening step.
+  > (XChaCha20-Poly1305), but use a **dedicated, least-privilege FTP account**. FTPS/SFTP is a
+  > planned hardening step.
 
-- **Folder sync (recommended on Android)**: keep the `.pdvault` in a folder synced by
-  **[Syncthing](https://syncthing.net/)** (or FolderSync). This works where third-party
-  apps cannot tap into Google Drive's auto-sync on Android, and keeps the same
-  single-file model with no servable web copy.
+- **On Android** the vault lives in the app's private storage (a real, always-accessible path —
+  Android revokes Storage-Access-Framework permissions on restart, so a picked Documents/Drive
+  file can't be reopened reliably). *Import vault* copies a picked file in once; FTP then keeps
+  every device in sync. Use *Export* if you want a copy back in Documents.
+
+- **On desktop** you can alternatively skip FTP and keep the `.pdvault` in a folder synced by
+  [Syncthing](https://syncthing.net/), Dropbox, OneDrive, Nextcloud, etc.
 
 ## Testing
 
