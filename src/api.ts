@@ -15,10 +15,19 @@ export interface VaultEntry {
 }
 
 export interface VaultStatus {
-  path: string;
   vaultId: string;
   revision: number;
   entryCount: number;
+}
+
+export interface VaultSnapshot {
+  status: VaultStatus;
+  contents: string;
+}
+
+export interface EntriesSnapshot {
+  entries: VaultEntry[];
+  contents: string;
 }
 
 export interface Preferences {
@@ -63,35 +72,37 @@ export interface SyncResult {
   pulled: boolean;
   revision: number;
   entryCount: number;
+  contents: string;
 }
 
 const Api = {
   getPreferences: () => invoke<Preferences>("get_preferences"),
   savePreferences: (preferences: Preferences) => invoke<Preferences>("save_preferences", { preferences }),
-  createVault: (path: string, masterPassword: string) =>
-    invoke<VaultStatus>("create_vault", { path, masterPassword }),
-  unlockVault: (path: string, masterPassword: string) =>
-    invoke<VaultStatus>("unlock_vault", { path, masterPassword }),
+  createVault: (masterPassword: string) =>
+    invoke<VaultSnapshot>("create_vault", { masterPassword }),
+  unlockVault: (contents: string, masterPassword: string) =>
+    invoke<VaultStatus>("unlock_vault", { contents, masterPassword }),
   lockVault: () => invoke<void>("lock_vault"),
   listEntries: () => invoke<VaultEntry[]>("list_entries"),
-  upsertEntry: (entry: VaultEntry) => invoke<VaultEntry[]>("upsert_entry", { entry }),
-  deleteEntry: (id: string) => invoke<VaultEntry[]>("delete_entry", { id }),
+  upsertEntry: (entry: VaultEntry) => invoke<EntriesSnapshot>("upsert_entry", { entry }),
+  deleteEntry: (id: string) => invoke<EntriesSnapshot>("delete_entry", { id }),
   changeMasterPassword: (oldPassword: string, newPassword: string) =>
-    invoke<VaultStatus>("change_master_password", { oldPassword, newPassword }),
+    invoke<VaultSnapshot>("change_master_password", { oldPassword, newPassword }),
   generatePassword: (options: GeneratePasswordOptions) =>
     invoke<string>("generate_password", { options }),
-  importLegacyPreview: (path: string, legacyPassword?: string) =>
+  importLegacyPreview: (name: string, contents: number[], legacyPassword?: string) =>
     invoke<ImportPreview>("import_legacy_preview", {
-      path,
+      name,
+      contents,
       legacyPassword: legacyPassword || null,
     }),
   importLegacyCommit: (importId: string) =>
-    invoke<VaultEntry[]>("import_legacy_commit", { importId }),
-  saveVault: () => invoke<VaultStatus>("save_vault"),
-  exportVaultCopy: (path: string) => invoke<VaultStatus>("export_vault_copy", { path }),
-  exportLegacyXml: (path: string) => invoke<number>("export_legacy_xml", { path }),
+    invoke<EntriesSnapshot>("import_legacy_commit", { importId }),
+  saveVault: () => invoke<VaultSnapshot>("save_vault"),
+  exportVaultCopy: () => invoke<string>("export_vault_copy"),
+  exportLegacyXml: () => invoke<string>("export_legacy_xml"),
   getSyncConfig: () => invoke<SyncConfig | null>("get_sync_config"),
-  setSyncConfig: (config: SyncConfig) => invoke<VaultStatus>("set_sync_config", { config }),
+  setSyncConfig: (config: SyncConfig) => invoke<VaultSnapshot>("set_sync_config", { config }),
   testSync: (config: SyncConfig) => invoke<void>("test_sync", { config }),
   syncNow: () => invoke<SyncResult>("sync_now"),
 };

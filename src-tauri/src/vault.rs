@@ -1,7 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs,
-    path::{Path, PathBuf},
     sync::Mutex,
 };
 
@@ -17,8 +15,8 @@ use crate::{
     },
     legacy,
     models::{
-        GeneratePasswordOptions, ImportPreview, ImportPreviewEntry, SyncConfig, SyncResult,
-        VaultData, VaultEntry, VaultEnvelope, VaultHeader, VaultStatus,
+        EntriesSnapshot, GeneratePasswordOptions, ImportPreview, ImportPreviewEntry, SyncConfig,
+        SyncResult, VaultData, VaultEntry, VaultEnvelope, VaultHeader, VaultSnapshot, VaultStatus,
     },
     sync,
 };
@@ -32,7 +30,6 @@ pub struct VaultManager {
 }
 
 struct VaultSession {
-    path: String,
     header: VaultHeader,
     key: Zeroizing<[u8; 32]>,
     data: VaultData,
@@ -41,17 +38,18 @@ struct VaultSession {
 }
 
 // ---------------------------------------------------------------------------
-// Core vault logic. These inherent methods hold the real behaviour so they can
-// be unit-tested directly against a `VaultManager`; the `#[tauri::command]`
-// functions below are thin wrappers that lock the shared state and delegate.
+// Core vault logic. Rust owns crypto and state but NOT file I/O: every mutating
+// method returns the serialized vault (`contents`) for the frontend to persist
+// via the Tauri fs plugin. This lets the vault live at a real path or an Android
+// `content://` URI, which Rust's std::fs cannot open.
 // ---------------------------------------------------------------------------
 impl VaultManager {
-    pub fn create(&mut self, path: String, master_password: String) -> Result<VaultStatus, String> {
+    pub fn create(&mut self, master_password: String) -> Result<VaultSnapshot, String> {
         validate_password(&master_password)?;
         let now = now_iso();
         let kdf = default_kdf_params();
         let key = derive_key(&master_password, &kdf)?;
-        let mut header = VaultHeader {
+        let header = VaultHeader {
             magic: VAULT_MAGIC.to_string(),
             version: 1,
             vault_id: Uuid::new_v4().to_string(),
@@ -68,17 +66,7 @@ impl VaultManager {
             settings: serde_json::json!({}),
         };
 
-        let payload = seal_payload(&data, &mut header, &key[..])?;
-        write_envelope(
-            &path,
-            &VaultEnvelope {
-                header: header.clone(),
-                payload,
-            },
-        )?;
-
         self.session = Some(VaultSession {
-            path,
             header,
             key,
             data,
@@ -86,18 +74,23 @@ impl VaultManager {
             loaded_revision: 0,
         });
 
-        Ok(self.session.as_ref().unwrap().status())
+        let session = self.session.as_mut().unwrap();
+        let contents = seal_envelope(session)?;
+        Ok(VaultSnapshot {
+            status: session.status(),
+            contents,
+        })
     }
 
-    pub fn unlock(&mut self, path: String, master_password: String) -> Result<VaultStatus, String> {
-        let envelope = read_envelope(&path)?;
+    pub fn unlock(&mut self, contents: String, master_password: String) -> Result<VaultStatus, String> {
+        let envelope: VaultEnvelope =
+            serde_json::from_str(&contents).map_err(|_| "vault_file_invalid".to_string())?;
         validate_header(&envelope.header)?;
         let key = derive_key(&master_password, &envelope.header.kdf)?;
         let data: VaultData = open_payload(&envelope.payload, &envelope.header, &key[..])
             .map_err(|_| "master_password_incorrect".to_string())?;
 
         self.session = Some(VaultSession {
-            path,
             header: envelope.header,
             key,
             base_entries: data.entries.clone(),
@@ -117,7 +110,7 @@ impl VaultManager {
         Ok(visible_entries(&session.data.entries))
     }
 
-    pub fn upsert(&mut self, mut entry: VaultEntry) -> Result<Vec<VaultEntry>, String> {
+    pub fn upsert(&mut self, mut entry: VaultEntry) -> Result<EntriesSnapshot, String> {
         let session = self.session.as_mut().ok_or_else(|| "vault_locked".to_string())?;
         let now = now_iso();
 
@@ -141,11 +134,14 @@ impl VaultManager {
             session.data.entries.push(entry);
         }
 
-        save_session(session)?;
-        Ok(visible_entries(&session.data.entries))
+        let contents = seal_envelope(session)?;
+        Ok(EntriesSnapshot {
+            entries: visible_entries(&session.data.entries),
+            contents,
+        })
     }
 
-    pub fn delete(&mut self, id: String) -> Result<Vec<VaultEntry>, String> {
+    pub fn delete(&mut self, id: String) -> Result<EntriesSnapshot, String> {
         let session = self.session.as_mut().ok_or_else(|| "vault_locked".to_string())?;
         let now = now_iso();
 
@@ -154,15 +150,18 @@ impl VaultManager {
             entry.updated_at = now;
         }
 
-        save_session(session)?;
-        Ok(visible_entries(&session.data.entries))
+        let contents = seal_envelope(session)?;
+        Ok(EntriesSnapshot {
+            entries: visible_entries(&session.data.entries),
+            contents,
+        })
     }
 
     pub fn change_password(
         &mut self,
         old_password: String,
         new_password: String,
-    ) -> Result<VaultStatus, String> {
+    ) -> Result<VaultSnapshot, String> {
         validate_password(&new_password)?;
         let session = self.session.as_mut().ok_or_else(|| "vault_locked".to_string())?;
         let old_key = derive_key(&old_password, &session.header.kdf)?;
@@ -170,61 +169,47 @@ impl VaultManager {
             return Err("master_password_incorrect".to_string());
         }
 
-        // Absorb any concurrent remote edits while we still hold the OLD key,
-        // so a change made on another device is not lost during rotation.
-        merge_remote_changes(session)?;
-
-        // Re-key with a fresh salt + derived key. We persist directly instead of
-        // going through `save_session`, because that would call
-        // `merge_remote_changes` again and try to decrypt the on-disk file (still
-        // sealed with the OLD key) using the NEW key, which always fails.
         let new_kdf = default_kdf_params();
-        let new_key = derive_key(&new_password, &new_kdf)?;
-        let prev_kdf = session.header.kdf.clone();
-        let prev_key = session.key.clone();
+        session.key = derive_key(&new_password, &new_kdf)?;
         session.header.kdf = new_kdf;
-        session.key = new_key;
 
-        match persist_session(session) {
-            Ok(status) => Ok(status),
-            Err(error) => {
-                // Roll back so the in-memory session stays consistent with disk.
-                session.header.kdf = prev_kdf;
-                session.key = prev_key;
-                Err(error)
-            }
-        }
+        let contents = seal_envelope(session)?;
+        Ok(VaultSnapshot {
+            status: session.status(),
+            contents,
+        })
     }
 
-    pub fn save(&mut self) -> Result<VaultStatus, String> {
+    pub fn save(&mut self) -> Result<VaultSnapshot, String> {
         let session = self.session.as_mut().ok_or_else(|| "vault_locked".to_string())?;
-        save_session(session)
+        let contents = current_envelope(session)?;
+        Ok(VaultSnapshot {
+            status: session.status(),
+            contents,
+        })
     }
 
-    pub fn export_copy(&mut self, path: String) -> Result<VaultStatus, String> {
+    /// Return a freshly-sealed copy of the current vault for the frontend to
+    /// write to a user-chosen location.
+    pub fn export_copy(&mut self) -> Result<String, String> {
         let session = self.session.as_mut().ok_or_else(|| "vault_locked".to_string())?;
-        let status = save_session(session)?;
-        ensure_parent_dir(&path)?;
-        fs::copy(&session.path, &path).map_err(|e| e.to_string())?;
-        Ok(status)
+        current_envelope(session)
     }
 
     /// Export the visible entries as legacy-compatible (UNENCRYPTED) Passdroid XML.
-    pub fn export_legacy_xml(&self, path: String) -> Result<usize, String> {
+    pub fn export_legacy_xml(&self) -> Result<String, String> {
         let session = self.session.as_ref().ok_or_else(|| "vault_locked".to_string())?;
         let entries = visible_entries(&session.data.entries);
-        let xml = legacy::entries_to_legacy_xml(&entries, env!("CARGO_PKG_VERSION"));
-        ensure_parent_dir(&path)?;
-        fs::write(&path, xml).map_err(|e| e.to_string())?;
-        Ok(entries.len())
+        Ok(legacy::entries_to_legacy_xml(&entries, env!("CARGO_PKG_VERSION")))
     }
 
     pub fn import_preview(
         &mut self,
-        path: String,
+        name: String,
+        contents: Vec<u8>,
         legacy_password: Option<String>,
     ) -> Result<ImportPreview, String> {
-        let entries = legacy::import_legacy_entries(&path, legacy_password)?;
+        let entries = legacy::import_legacy_entries_from_bytes(&name, &contents, legacy_password)?;
         let import_id = Uuid::new_v4().to_string();
         let preview_entries = entries
             .iter()
@@ -247,7 +232,7 @@ impl VaultManager {
         })
     }
 
-    pub fn import_commit(&mut self, import_id: String) -> Result<Vec<VaultEntry>, String> {
+    pub fn import_commit(&mut self, import_id: String) -> Result<EntriesSnapshot, String> {
         let mut entries = self
             .pending_imports
             .remove(&import_id)
@@ -264,8 +249,11 @@ impl VaultManager {
         }
 
         session.data.entries.extend(entries);
-        save_session(session)?;
-        Ok(visible_entries(&session.data.entries))
+        let contents = seal_envelope(session)?;
+        Ok(EntriesSnapshot {
+            entries: visible_entries(&session.data.entries),
+            contents,
+        })
     }
 
     pub fn get_sync_config(&self) -> Result<Option<SyncConfig>, String> {
@@ -273,17 +261,22 @@ impl VaultManager {
         Ok(read_sync_config(&session.data))
     }
 
-    pub fn set_sync_config(&mut self, config: SyncConfig) -> Result<VaultStatus, String> {
+    pub fn set_sync_config(&mut self, config: SyncConfig) -> Result<VaultSnapshot, String> {
         let session = self.session.as_mut().ok_or_else(|| "vault_locked".to_string())?;
         if !session.data.settings.is_object() {
             session.data.settings = serde_json::json!({});
         }
         session.data.settings["sync"] =
             serde_json::to_value(&config).map_err(|e| e.to_string())?;
-        save_session(session)
+        let contents = seal_envelope(session)?;
+        Ok(VaultSnapshot {
+            status: session.status(),
+            contents,
+        })
     }
 
-    /// Pull the remote vault, merge it with the local one, persist, then push.
+    /// Pull the remote vault, merge it by id/updated_at, re-seal, then push.
+    /// Returns the merged vault so the frontend can persist it locally too.
     pub fn sync_now(&mut self) -> Result<SyncResult, String> {
         let session = self.session.as_mut().ok_or_else(|| "vault_locked".to_string())?;
         let config = read_sync_config(&session.data).ok_or_else(|| "sync_not_configured".to_string())?;
@@ -301,7 +294,8 @@ impl VaultManager {
                 let remote: VaultData =
                     open_payload(&envelope.payload, &envelope.header, &session.key[..])
                         .map_err(|_| "sync_decrypt_failed".to_string())?;
-                let merged = merge_entries(&session.base_entries, &remote.entries, &session.data.entries);
+                let merged =
+                    merge_entries(&session.base_entries, &remote.entries, &session.data.entries);
                 session.data.entries = merged;
                 session.data.revision = session.data.revision.max(remote.revision);
                 true
@@ -309,14 +303,14 @@ impl VaultManager {
             None => false,
         };
 
-        let status = persist_session(session)?;
-        let bytes = fs::read(&session.path).map_err(|e| e.to_string())?;
-        sync::upload(&config, &bytes)?;
+        let contents = seal_envelope(session)?;
+        sync::upload(&config, contents.as_bytes())?;
 
         Ok(SyncResult {
             pulled,
-            revision: status.revision,
-            entry_count: status.entry_count,
+            revision: session.data.revision,
+            entry_count: session.data.entries.iter().filter(|e| e.deleted_at.is_none()).count(),
+            contents,
         })
     }
 }
@@ -327,206 +321,29 @@ fn read_sync_config(data: &VaultData) -> Option<SyncConfig> {
         .and_then(|value| serde_json::from_value(value.clone()).ok())
 }
 
-// ---------------------------------------------------------------------------
-// Tauri command wrappers.
-// ---------------------------------------------------------------------------
-macro_rules! manager {
-    ($state:expr) => {
-        $state.lock().map_err(|_| "vault_state_poisoned".to_string())?
-    };
-}
-
-#[tauri::command]
-pub fn create_vault(
-    path: String,
-    master_password: String,
-    state: State<'_, SharedVaultManager>,
-) -> Result<VaultStatus, String> {
-    manager!(state).create(path, master_password)
-}
-
-#[tauri::command]
-pub fn unlock_vault(
-    path: String,
-    master_password: String,
-    state: State<'_, SharedVaultManager>,
-) -> Result<VaultStatus, String> {
-    manager!(state).unlock(path, master_password)
-}
-
-#[tauri::command]
-pub fn lock_vault(state: State<'_, SharedVaultManager>) -> Result<(), String> {
-    manager!(state).lock();
-    Ok(())
-}
-
-#[tauri::command]
-pub fn list_entries(state: State<'_, SharedVaultManager>) -> Result<Vec<VaultEntry>, String> {
-    manager!(state).list()
-}
-
-#[tauri::command]
-pub fn upsert_entry(
-    entry: VaultEntry,
-    state: State<'_, SharedVaultManager>,
-) -> Result<Vec<VaultEntry>, String> {
-    manager!(state).upsert(entry)
-}
-
-#[tauri::command]
-pub fn delete_entry(
-    id: String,
-    state: State<'_, SharedVaultManager>,
-) -> Result<Vec<VaultEntry>, String> {
-    manager!(state).delete(id)
-}
-
-#[tauri::command]
-pub fn change_master_password(
-    old_password: String,
-    new_password: String,
-    state: State<'_, SharedVaultManager>,
-) -> Result<VaultStatus, String> {
-    manager!(state).change_password(old_password, new_password)
-}
-
-#[tauri::command]
-pub fn save_vault(state: State<'_, SharedVaultManager>) -> Result<VaultStatus, String> {
-    manager!(state).save()
-}
-
-#[tauri::command]
-pub fn export_vault_copy(
-    path: String,
-    state: State<'_, SharedVaultManager>,
-) -> Result<VaultStatus, String> {
-    manager!(state).export_copy(path)
-}
-
-#[tauri::command]
-pub fn export_legacy_xml(
-    path: String,
-    state: State<'_, SharedVaultManager>,
-) -> Result<usize, String> {
-    manager!(state).export_legacy_xml(path)
-}
-
-#[tauri::command]
-pub fn get_sync_config(state: State<'_, SharedVaultManager>) -> Result<Option<SyncConfig>, String> {
-    manager!(state).get_sync_config()
-}
-
-#[tauri::command]
-pub fn set_sync_config(
-    config: SyncConfig,
-    state: State<'_, SharedVaultManager>,
-) -> Result<VaultStatus, String> {
-    manager!(state).set_sync_config(config)
-}
-
-#[tauri::command]
-pub fn test_sync(config: SyncConfig) -> Result<(), String> {
-    sync::test_connection(&config)
-}
-
-#[tauri::command]
-pub fn sync_now(state: State<'_, SharedVaultManager>) -> Result<SyncResult, String> {
-    manager!(state).sync_now()
-}
-
-#[tauri::command]
-pub fn import_legacy_preview(
-    path: String,
-    legacy_password: Option<String>,
-    state: State<'_, SharedVaultManager>,
-) -> Result<ImportPreview, String> {
-    manager!(state).import_preview(path, legacy_password)
-}
-
-#[tauri::command]
-pub fn import_legacy_commit(
-    import_id: String,
-    state: State<'_, SharedVaultManager>,
-) -> Result<Vec<VaultEntry>, String> {
-    manager!(state).import_commit(import_id)
-}
-
-#[tauri::command]
-pub fn generate_password(options: GeneratePasswordOptions) -> Result<String, String> {
-    let length = options.length.clamp(8, 256);
-    let mut groups: Vec<&[u8]> = Vec::new();
-    if options.uppercase {
-        groups.push(b"ABCDEFGHJKLMNPQRSTUVWXYZ");
-    }
-    if options.lowercase {
-        groups.push(b"abcdefghijkmnopqrstuvwxyz");
-    }
-    if options.numbers {
-        groups.push(b"23456789");
-    }
-    if options.symbols {
-        groups.push(b"!@#$%^&*()-_=+[]{};:,.?");
-    }
-    if groups.is_empty() {
-        return Err("password_generator_empty_charset".to_string());
-    }
-
-    let mut chars = Vec::new();
-    for group in &groups {
-        chars.push(random_pick(group));
-    }
-
-    let all = groups.concat();
-    while chars.len() < length {
-        chars.push(random_pick(&all));
-    }
-    shuffle(&mut chars);
-    String::from_utf8(chars).map_err(|_| "password_generator_failed".to_string())
-}
-
-fn save_session(session: &mut VaultSession) -> Result<VaultStatus, String> {
-    merge_remote_changes(session)?;
-    persist_session(session)
-}
-
-/// Seal the current in-memory data with the session key and write it atomically.
-/// Does NOT merge from disk first — callers that need a merge use `save_session`.
-fn persist_session(session: &mut VaultSession) -> Result<VaultStatus, String> {
+/// Bump the revision, seal the current data with the session key, update the
+/// in-memory baseline, and return the serialized envelope JSON.
+fn seal_envelope(session: &mut VaultSession) -> Result<String, String> {
     session.data.revision = session.data.revision.saturating_add(1);
     session.header.updated_at = now_iso();
+    let payload = seal_payload(&session.data, &mut session.header, &session.key[..])?;
+    session.loaded_revision = session.data.revision;
+    session.base_entries = session.data.entries.clone();
+    let envelope = VaultEnvelope {
+        header: session.header.clone(),
+        payload,
+    };
+    serde_json::to_string_pretty(&envelope).map_err(|e| e.to_string())
+}
+
+/// Seal the current data WITHOUT advancing the revision (used for export copies).
+fn current_envelope(session: &mut VaultSession) -> Result<String, String> {
     let payload = seal_payload(&session.data, &mut session.header, &session.key[..])?;
     let envelope = VaultEnvelope {
         header: session.header.clone(),
         payload,
     };
-    write_envelope(&session.path, &envelope)?;
-
-    session.loaded_revision = session.data.revision;
-    session.base_entries = session.data.entries.clone();
-    Ok(session.status())
-}
-
-fn merge_remote_changes(session: &mut VaultSession) -> Result<(), String> {
-    if !Path::new(&session.path).exists() {
-        return Ok(());
-    }
-
-    let envelope = read_envelope(&session.path)?;
-    if envelope.header.vault_id != session.header.vault_id {
-        return Err("vault_id_mismatch".to_string());
-    }
-
-    let disk_data: VaultData = open_payload(&envelope.payload, &envelope.header, &session.key[..])
-        .map_err(|_| "vault_changed_and_cannot_merge".to_string())?;
-    if disk_data.revision <= session.loaded_revision {
-        return Ok(());
-    }
-
-    session.data.entries = merge_entries(&session.base_entries, &disk_data.entries, &session.data.entries);
-    session.data.settings = disk_data.settings;
-    session.data.revision = disk_data.revision.max(session.data.revision);
-    session.header = envelope.header;
-    Ok(())
+    serde_json::to_string_pretty(&envelope).map_err(|e| e.to_string())
 }
 
 fn merge_entries(base: &[VaultEntry], disk: &[VaultEntry], local: &[VaultEntry]) -> Vec<VaultEntry> {
@@ -599,42 +416,6 @@ fn visible_entries(entries: &[VaultEntry]) -> Vec<VaultEntry> {
     visible
 }
 
-fn read_envelope(path: &str) -> Result<VaultEnvelope, String> {
-    let data = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&data).map_err(|_| "vault_file_invalid".to_string())
-}
-
-fn write_envelope(path: &str, envelope: &VaultEnvelope) -> Result<(), String> {
-    ensure_parent_dir(path)?;
-    let data = serde_json::to_vec_pretty(envelope).map_err(|e| e.to_string())?;
-    let target = PathBuf::from(path);
-    let tmp = target.with_file_name(format!(
-        ".{}.{}.tmp",
-        target.file_name().and_then(|v| v.to_str()).unwrap_or("vault"),
-        Uuid::new_v4()
-    ));
-
-    fs::write(&tmp, data).map_err(|e| e.to_string())?;
-    // The temp file lives in the same directory as the target, so the rename is
-    // a same-volume atomic replace on both Windows and Unix. If it fails we
-    // leave the existing vault untouched rather than risk a torn non-atomic
-    // overwrite of a password vault.
-    if let Err(error) = fs::rename(&tmp, &target) {
-        let _ = fs::remove_file(&tmp);
-        return Err(error.to_string());
-    }
-    Ok(())
-}
-
-fn ensure_parent_dir(path: &str) -> Result<(), String> {
-    if let Some(parent) = Path::new(path).parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
-}
-
 fn validate_header(header: &VaultHeader) -> Result<(), String> {
     if header.magic != VAULT_MAGIC || header.version != 1 {
         return Err("unsupported_vault_format".to_string());
@@ -662,7 +443,6 @@ fn random_pick(group: &[u8]) -> u8 {
 fn random_index(len: usize) -> usize {
     debug_assert!(len > 0);
     let len = len as u32;
-    // Largest multiple of `len` that fits in u32; reject draws at or above it.
     let limit = u32::MAX - (u32::MAX % len);
     loop {
         let mut bytes = [0u8; 4];
@@ -684,12 +464,162 @@ fn shuffle(chars: &mut [u8]) {
 impl VaultSession {
     fn status(&self) -> VaultStatus {
         VaultStatus {
-            path: self.path.clone(),
             vault_id: self.header.vault_id.clone(),
             revision: self.data.revision,
             entry_count: self.data.entries.iter().filter(|entry| entry.deleted_at.is_none()).count(),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Tauri command wrappers.
+// ---------------------------------------------------------------------------
+macro_rules! manager {
+    ($state:expr) => {
+        $state.lock().map_err(|_| "vault_state_poisoned".to_string())?
+    };
+}
+
+#[tauri::command]
+pub fn create_vault(
+    master_password: String,
+    state: State<'_, SharedVaultManager>,
+) -> Result<VaultSnapshot, String> {
+    manager!(state).create(master_password)
+}
+
+#[tauri::command]
+pub fn unlock_vault(
+    contents: String,
+    master_password: String,
+    state: State<'_, SharedVaultManager>,
+) -> Result<VaultStatus, String> {
+    manager!(state).unlock(contents, master_password)
+}
+
+#[tauri::command]
+pub fn lock_vault(state: State<'_, SharedVaultManager>) -> Result<(), String> {
+    manager!(state).lock();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_entries(state: State<'_, SharedVaultManager>) -> Result<Vec<VaultEntry>, String> {
+    manager!(state).list()
+}
+
+#[tauri::command]
+pub fn upsert_entry(
+    entry: VaultEntry,
+    state: State<'_, SharedVaultManager>,
+) -> Result<EntriesSnapshot, String> {
+    manager!(state).upsert(entry)
+}
+
+#[tauri::command]
+pub fn delete_entry(
+    id: String,
+    state: State<'_, SharedVaultManager>,
+) -> Result<EntriesSnapshot, String> {
+    manager!(state).delete(id)
+}
+
+#[tauri::command]
+pub fn change_master_password(
+    old_password: String,
+    new_password: String,
+    state: State<'_, SharedVaultManager>,
+) -> Result<VaultSnapshot, String> {
+    manager!(state).change_password(old_password, new_password)
+}
+
+#[tauri::command]
+pub fn save_vault(state: State<'_, SharedVaultManager>) -> Result<VaultSnapshot, String> {
+    manager!(state).save()
+}
+
+#[tauri::command]
+pub fn export_vault_copy(state: State<'_, SharedVaultManager>) -> Result<String, String> {
+    manager!(state).export_copy()
+}
+
+#[tauri::command]
+pub fn export_legacy_xml(state: State<'_, SharedVaultManager>) -> Result<String, String> {
+    manager!(state).export_legacy_xml()
+}
+
+#[tauri::command]
+pub fn get_sync_config(state: State<'_, SharedVaultManager>) -> Result<Option<SyncConfig>, String> {
+    manager!(state).get_sync_config()
+}
+
+#[tauri::command]
+pub fn set_sync_config(
+    config: SyncConfig,
+    state: State<'_, SharedVaultManager>,
+) -> Result<VaultSnapshot, String> {
+    manager!(state).set_sync_config(config)
+}
+
+#[tauri::command]
+pub fn test_sync(config: SyncConfig) -> Result<(), String> {
+    sync::test_connection(&config)
+}
+
+#[tauri::command]
+pub fn sync_now(state: State<'_, SharedVaultManager>) -> Result<SyncResult, String> {
+    manager!(state).sync_now()
+}
+
+#[tauri::command]
+pub fn import_legacy_preview(
+    name: String,
+    contents: Vec<u8>,
+    legacy_password: Option<String>,
+    state: State<'_, SharedVaultManager>,
+) -> Result<ImportPreview, String> {
+    manager!(state).import_preview(name, contents, legacy_password)
+}
+
+#[tauri::command]
+pub fn import_legacy_commit(
+    import_id: String,
+    state: State<'_, SharedVaultManager>,
+) -> Result<EntriesSnapshot, String> {
+    manager!(state).import_commit(import_id)
+}
+
+#[tauri::command]
+pub fn generate_password(options: GeneratePasswordOptions) -> Result<String, String> {
+    let length = options.length.clamp(8, 256);
+    let mut groups: Vec<&[u8]> = Vec::new();
+    if options.uppercase {
+        groups.push(b"ABCDEFGHJKLMNPQRSTUVWXYZ");
+    }
+    if options.lowercase {
+        groups.push(b"abcdefghijkmnopqrstuvwxyz");
+    }
+    if options.numbers {
+        groups.push(b"23456789");
+    }
+    if options.symbols {
+        groups.push(b"!@#$%^&*()-_=+[]{};:,.?");
+    }
+    if groups.is_empty() {
+        return Err("password_generator_empty_charset".to_string());
+    }
+
+    let mut chars = Vec::new();
+    for group in &groups {
+        chars.push(random_pick(group));
+    }
+
+    let all = groups.concat();
+    while chars.len() < length {
+        chars.push(random_pick(&all));
+    }
+    shuffle(&mut chars);
+    String::from_utf8(chars).map_err(|_| "password_generator_failed".to_string())
 }
 
 #[cfg(test)]
@@ -711,12 +641,6 @@ mod tests {
         }
     }
 
-    fn temp_vault_path(tag: &str) -> String {
-        let mut dir = std::env::temp_dir();
-        dir.push(format!("passdroid-test-{}-{}.pdvault", tag, Uuid::new_v4()));
-        dir.to_string_lossy().to_string()
-    }
-
     #[test]
     fn merge_creates_conflict_for_parallel_edits() {
         let base = vec![entry("1", "Mail", "1")];
@@ -730,7 +654,6 @@ mod tests {
 
     #[test]
     fn merge_keeps_parallel_additions_without_loss() {
-        // Both sides started from the same base and each added a distinct entry.
         let base = vec![entry("shared", "Shared", "1")];
         let disk = vec![entry("shared", "Shared", "1"), entry("remote", "Remote add", "2")];
         let local = vec![entry("shared", "Shared", "1"), entry("local", "Local add", "2")];
@@ -745,7 +668,6 @@ mod tests {
 
     #[test]
     fn merge_identical_edit_does_not_conflict() {
-        // The same edit applied on both devices must collapse to one entry.
         let base = vec![entry("1", "Mail", "1")];
         let disk = vec![entry("1", "Mail edited", "2")];
         let local = vec![entry("1", "Mail edited", "2")];
@@ -783,12 +705,12 @@ mod tests {
 
     #[test]
     fn full_command_lifecycle_round_trips() {
-        let path = temp_vault_path("lifecycle");
         let mut manager = VaultManager::default();
 
-        // Create + add two entries.
-        let status = manager.create(path.clone(), "first-master-pass".to_string()).unwrap();
-        assert_eq!(status.entry_count, 0);
+        // Create loads the session and returns the serialized vault.
+        let created = manager.create("first-master-pass".to_string()).unwrap();
+        assert_eq!(created.status.entry_count, 0);
+
         manager
             .upsert(VaultEntry::imported(
                 "Mail".to_string(),
@@ -807,60 +729,57 @@ mod tests {
                 String::new(),
             ))
             .unwrap();
-        assert_eq!(after_add.len(), 2);
+        assert_eq!(after_add.entries.len(), 2);
 
-        // Soft-delete one entry.
-        let mail_id = after_add.iter().find(|e| e.title == "Mail").unwrap().id.clone();
+        let mail_id = after_add.entries.iter().find(|e| e.title == "Mail").unwrap().id.clone();
         let after_delete = manager.delete(mail_id).unwrap();
-        assert_eq!(after_delete.len(), 1);
-        assert_eq!(after_delete[0].title, "Bank");
+        assert_eq!(after_delete.entries.len(), 1);
+        assert_eq!(after_delete.entries[0].title, "Bank");
 
-        // Rotate the master password (the previously-broken path).
-        manager
+        // Rotate the master password; capture the re-keyed vault bytes.
+        let changed = manager
             .change_password("first-master-pass".to_string(), "second-master-pass".to_string())
             .unwrap();
 
-        // Lock and reopen with the NEW password; the old one must be rejected.
+        // Lock and reopen from the serialized bytes: old password rejected, new ok.
         manager.lock();
         assert!(manager.list().is_err());
         assert_eq!(
-            manager.unlock(path.clone(), "first-master-pass".to_string()),
+            manager.unlock(changed.contents.clone(), "first-master-pass".to_string()),
             Err("master_password_incorrect".to_string())
         );
-        let reopened = manager.unlock(path.clone(), "second-master-pass".to_string()).unwrap();
+        let reopened = manager.unlock(changed.contents.clone(), "second-master-pass".to_string()).unwrap();
         assert_eq!(reopened.entry_count, 1);
 
         let entries = manager.list().unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].title, "Bank");
         assert_eq!(entries[0].password, "v3rys3cret");
-
-        let _ = fs::remove_file(&path);
     }
 
     #[test]
     fn change_password_rejects_wrong_old_password() {
-        let path = temp_vault_path("change-pw");
         let mut manager = VaultManager::default();
-        manager.create(path.clone(), "correct-old-pass".to_string()).unwrap();
+        let created = manager.create("correct-old-pass".to_string()).unwrap();
 
-        let result = manager.change_password("wrong-old-pass".to_string(), "new-pass-1234".to_string());
-        assert_eq!(result, Err("master_password_incorrect".to_string()));
+        assert_eq!(
+            manager
+                .change_password("wrong-old-pass".to_string(), "new-pass-1234".to_string())
+                .err(),
+            Some("master_password_incorrect".to_string())
+        );
 
-        // Session must remain usable with the original password after the failure.
+        // The original vault bytes still unlock with the original password.
         manager.lock();
-        assert!(manager.unlock(path.clone(), "correct-old-pass".to_string()).is_ok());
-
-        let _ = fs::remove_file(&path);
+        assert!(manager.unlock(created.contents, "correct-old-pass".to_string()).is_ok());
     }
 
     #[test]
     fn create_rejects_short_password() {
-        let path = temp_vault_path("short-pw");
         let mut manager = VaultManager::default();
         assert_eq!(
-            manager.create(path, "short".to_string()),
-            Err("master_password_too_short".to_string())
+            manager.create("short".to_string()).err(),
+            Some("master_password_too_short".to_string())
         );
     }
 }

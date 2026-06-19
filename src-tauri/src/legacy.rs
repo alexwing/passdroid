@@ -43,21 +43,39 @@ fn encrypt_cbc_raw(key: &[u8], iv: &[u8], plaintext: &[u8]) -> Vec<u8> {
         .to_vec()
 }
 
-pub fn import_legacy_entries(path: &str, legacy_password: Option<String>) -> Result<Vec<VaultEntry>, String> {
-    let bytes = fs::read(path).map_err(|e| e.to_string())?;
-
-    if bytes.starts_with(b"SQLite format 3") || Path::new(path).extension().and_then(|v| v.to_str()) == Some("db") {
+/// Import from in-memory bytes. The frontend reads the picked file via the
+/// Tauri fs plugin (content-URI aware on Android) and passes the bytes here.
+/// SQLite needs a real path for rusqlite, so its bytes are written to a temp
+/// file first.
+pub fn import_legacy_entries_from_bytes(
+    name: &str,
+    bytes: &[u8],
+    legacy_password: Option<String>,
+) -> Result<Vec<VaultEntry>, String> {
+    if is_sqlite(bytes, name) {
         let password = legacy_password.ok_or_else(|| "legacy_password_required".to_string())?;
-        return import_sqlite(path, &password);
+        let mut tmp = std::env::temp_dir();
+        tmp.push(format!("passdroid-import-{}.db", uuid::Uuid::new_v4()));
+        fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+        let result = import_sqlite(&tmp.to_string_lossy(), &password);
+        let _ = fs::remove_file(&tmp);
+        return result;
     }
+    import_decoded(bytes, legacy_password)
+}
 
+fn is_sqlite(bytes: &[u8], name: &str) -> bool {
+    bytes.starts_with(b"SQLite format 3")
+        || Path::new(name).extension().and_then(|v| v.to_str()) == Some("db")
+}
+
+fn import_decoded(bytes: &[u8], legacy_password: Option<String>) -> Result<Vec<VaultEntry>, String> {
     if bytes.starts_with(b"sqt") {
         let password = legacy_password.ok_or_else(|| "legacy_password_required".to_string())?;
-        let xml = decrypt_legacy_export(&bytes, &password)?;
+        let xml = decrypt_legacy_export(bytes, &password)?;
         return parse_xml(&xml);
     }
-
-    let xml = String::from_utf8(bytes).map_err(|_| "legacy_file_not_utf8".to_string())?;
+    let xml = String::from_utf8(bytes.to_vec()).map_err(|_| "legacy_file_not_utf8".to_string())?;
     parse_xml(&xml)
 }
 
@@ -394,13 +412,10 @@ mod tests {
     }
 
     #[test]
-    fn imports_clear_xml_from_disk() {
-        let path = temp_path("clear", "xml");
-        fs::write(&path, SAMPLE_XML).unwrap();
-        let entries = import_legacy_entries(&path, None).unwrap();
+    fn imports_clear_xml_bytes() {
+        let entries = import_legacy_entries_from_bytes("export.xml", SAMPLE_XML.as_bytes(), None).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].url, "https://example.com");
-        let _ = fs::remove_file(&path);
     }
 
     #[test]
@@ -413,13 +428,11 @@ mod tests {
         let mut blob = b"sqt".to_vec();
         blob.extend_from_slice(&encrypt_cbc_raw(&hmac, &[0u8; 16], &plaintext));
 
-        let path = temp_path("sqt", "pwde");
-        fs::write(&path, &blob).unwrap();
-        let entries = import_legacy_entries(&path, Some(password.to_string())).unwrap();
+        let entries =
+            import_legacy_entries_from_bytes("export.pwde", &blob, Some(password.to_string())).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].title, "Mail");
         assert_eq!(entries[0].password, "secret");
-        let _ = fs::remove_file(&path);
     }
 
     #[test]
@@ -430,10 +443,10 @@ mod tests {
         let mut blob = b"sqt".to_vec();
         blob.extend_from_slice(&encrypt_cbc_raw(&hmac, &[0u8; 16], &plaintext));
 
-        let path = temp_path("sqt-wrong", "pwde");
-        fs::write(&path, &blob).unwrap();
-        assert!(import_legacy_entries(&path, Some("wrong-pass".to_string())).is_err());
-        let _ = fs::remove_file(&path);
+        assert!(
+            import_legacy_entries_from_bytes("export.pwde", &blob, Some("wrong-pass".to_string()))
+                .is_err()
+        );
     }
 
     #[test]
@@ -441,8 +454,10 @@ mod tests {
         let password = "sqlite-master-pass";
         let path = temp_path("db", "db");
         build_legacy_db(&path, password);
+        let bytes = fs::read(&path).unwrap();
 
-        let entries = import_legacy_entries(&path, Some(password.to_string())).unwrap();
+        let entries =
+            import_legacy_entries_from_bytes("password.db", &bytes, Some(password.to_string())).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].title, "Mail");
         assert_eq!(entries[0].username, "user@example.com");
@@ -456,8 +471,9 @@ mod tests {
     fn sqlite_import_wrong_password_is_rejected() {
         let path = temp_path("db-wrong", "db");
         build_legacy_db(&path, "the-real-pass");
+        let bytes = fs::read(&path).unwrap();
         assert_eq!(
-            import_legacy_entries(&path, Some("not-the-pass".to_string())),
+            import_legacy_entries_from_bytes("password.db", &bytes, Some("not-the-pass".to_string())),
             Err("legacy_password_incorrect".to_string())
         );
         let _ = fs::remove_file(&path);
@@ -467,8 +483,9 @@ mod tests {
     fn sqlite_import_requires_password() {
         let path = temp_path("db-nopw", "db");
         build_legacy_db(&path, "whatever");
+        let bytes = fs::read(&path).unwrap();
         assert_eq!(
-            import_legacy_entries(&path, None),
+            import_legacy_entries_from_bytes("password.db", &bytes, None),
             Err("legacy_password_required".to_string())
         );
         let _ = fs::remove_file(&path);
@@ -476,11 +493,8 @@ mod tests {
 
     #[test]
     fn corrupt_file_is_rejected() {
-        let path = temp_path("corrupt", "xml");
         // Not SQLite, not "sqt", and not valid UTF-8 XML.
-        fs::write(&path, [0xff, 0xfe, 0x00, 0x01, 0x02, 0x03]).unwrap();
-        assert!(import_legacy_entries(&path, None).is_err());
-        let _ = fs::remove_file(&path);
+        assert!(import_legacy_entries_from_bytes("x.xml", &[0xff, 0xfe, 0x00, 0x01, 0x02, 0x03], None).is_err());
     }
 
     #[test]

@@ -99,10 +99,27 @@ pub struct VaultEnvelope {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultStatus {
-    pub path: String,
     pub vault_id: String,
     pub revision: u64,
     pub entry_count: usize,
+}
+
+/// A status plus the serialized vault file the frontend should persist. File I/O
+/// lives in the frontend (Tauri fs plugin) so the vault can be a real path or an
+/// Android `content://` URI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultSnapshot {
+    pub status: VaultStatus,
+    pub contents: String,
+}
+
+/// The visible entries plus the serialized vault file to persist.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntriesSnapshot {
+    pub entries: Vec<VaultEntry>,
+    pub contents: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +183,7 @@ pub struct SyncResult {
     pub pulled: bool,
     pub revision: u64,
     pub entry_count: usize,
+    pub contents: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

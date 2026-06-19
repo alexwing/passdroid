@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { readFile, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import Api, {
   GeneratePasswordOptions,
   ImportPreview,
@@ -196,7 +197,8 @@ function App() {
   const autoSync = async () => {
     setSyncState("syncing");
     try {
-      await Api.syncNow();
+      const result = await Api.syncNow();
+      await writeTextFile(vaultPath, result.contents);
       const list = await Api.listEntries();
       setEntries(list);
       setSyncState("ok");
@@ -213,7 +215,8 @@ function App() {
   const manualSync = async () => {
     setSyncState("syncing");
     const result = await run(async () => {
-      await Api.syncNow();
+      const r = await Api.syncNow();
+      await writeTextFile(vaultPath, r.contents);
       return Api.listEntries();
     }, "syncDone");
     if (result) {
@@ -225,10 +228,14 @@ function App() {
   };
 
   const saveSyncConfig = async () => {
-    const status = await run(() => Api.setSyncConfig(syncForm), "syncSaved");
-    if (status) {
+    const snapshot = await run(async () => {
+      const snap = await Api.setSyncConfig(syncForm);
+      await writeTextFile(vaultPath, snap.contents);
+      return snap;
+    }, "syncSaved");
+    if (snapshot) {
       setSyncConfig(syncForm);
-      setVaultStatus(status);
+      setVaultStatus(snapshot.status);
       // Push immediately so the remote file appears right after configuring.
       if (syncForm.enabled) await manualSync();
     }
@@ -267,12 +274,13 @@ function App() {
       return;
     }
 
-    const status = await run(
-      () => Api.createVault(vaultPath, createPassword),
-      "vaultCreated",
-    );
-    if (status) {
-      setVaultStatus(status);
+    const snapshot = await run(async () => {
+      const snap = await Api.createVault(createPassword);
+      await writeTextFile(vaultPath, snap.contents);
+      return snap;
+    }, "vaultCreated");
+    if (snapshot) {
+      setVaultStatus(snapshot.status);
       rememberVault(vaultPath);
       setEntries([]);
       setDraft(emptyEntry());
@@ -288,10 +296,10 @@ function App() {
 
   const unlockVault = async (event: FormEvent) => {
     event.preventDefault();
-    const status = await run(
-      () => Api.unlockVault(vaultPath, unlockPassword),
-      "vaultUnlocked",
-    );
+    const status = await run(async () => {
+      const contents = await readTextFile(vaultPath);
+      return Api.unlockVault(contents, unlockPassword);
+    }, "vaultUnlocked");
     if (status) {
       setVaultStatus(status);
       rememberVault(vaultPath);
@@ -333,12 +341,16 @@ function App() {
     }
     const existingId = draft.id;
     const knownIds = new Set(entries.map((entry) => entry.id));
-    const savedEntries = await run(() => Api.upsertEntry(draft), "saved");
-    if (savedEntries) {
-      setEntries(savedEntries);
+    const snapshot = await run(async () => {
+      const snap = await Api.upsertEntry(draft);
+      await writeTextFile(vaultPath, snap.contents);
+      return snap;
+    }, "saved");
+    if (snapshot) {
+      setEntries(snapshot.entries);
       // Updates keep their id; a create is the entry whose id is new in the
       // returned list (the backend assigns the UUID and trims the title).
-      const created = savedEntries.find((entry) => !knownIds.has(entry.id));
+      const created = snapshot.entries.find((entry) => !knownIds.has(entry.id));
       const nextId = existingId || created?.id || "";
       if (nextId) setSelectedId(nextId);
       maybeAutoSync();
@@ -347,9 +359,13 @@ function App() {
 
   const deleteCurrentEntry = async () => {
     if (!draft.id) return;
-    const savedEntries = await run(() => Api.deleteEntry(draft.id), "entryDeleted");
-    if (savedEntries) {
-      setEntries(savedEntries);
+    const snapshot = await run(async () => {
+      const snap = await Api.deleteEntry(draft.id);
+      await writeTextFile(vaultPath, snap.contents);
+      return snap;
+    }, "entryDeleted");
+    if (snapshot) {
+      setEntries(snapshot.entries);
       setSelectedId("");
       setDraft(emptyEntry());
       maybeAutoSync();
@@ -368,8 +384,12 @@ function App() {
       filters: [{ name: t("vaultFile"), extensions: ["pdvault"] }],
     });
     if (selected) {
-      const status = await run(() => Api.exportVaultCopy(selected), "copyExported");
-      if (status) setExportOpen(false);
+      const ok = await run(async () => {
+        const contents = await Api.exportVaultCopy();
+        await writeTextFile(selected, contents);
+        return true;
+      }, "copyExported");
+      if (ok) setExportOpen(false);
     }
   };
 
@@ -379,8 +399,12 @@ function App() {
       filters: [{ name: "XML", extensions: ["xml"] }],
     });
     if (selected) {
-      const count = await run(() => Api.exportLegacyXml(selected), "xmlExported");
-      if (count !== null) setExportOpen(false);
+      const ok = await run(async () => {
+        const xml = await Api.exportLegacyXml();
+        await writeTextFile(selected, xml);
+        return true;
+      }, "xmlExported");
+      if (ok) setExportOpen(false);
     }
   };
 
@@ -395,16 +419,16 @@ function App() {
       setNotice({ kind: "error", text: t("passwordMismatch") });
       return;
     }
-    const status = await run(
-      () =>
-        Api.changeMasterPassword(
-          changePasswordForm.oldPassword,
-          changePasswordForm.newPassword,
-        ),
-      "passwordChanged",
-    );
-    if (status) {
-      setVaultStatus(status);
+    const snapshot = await run(async () => {
+      const snap = await Api.changeMasterPassword(
+        changePasswordForm.oldPassword,
+        changePasswordForm.newPassword,
+      );
+      await writeTextFile(vaultPath, snap.contents);
+      return snap;
+    }, "passwordChanged");
+    if (snapshot) {
+      setVaultStatus(snapshot.status);
       setChangePasswordForm({ oldPassword: "", newPassword: "", repeatPassword: "" });
     }
   };
@@ -437,10 +461,10 @@ function App() {
       setNotice({ kind: "error", text: t("requiredLegacyPath") });
       return;
     }
-    const preview = await run(
-      () => Api.importLegacyPreview(legacyPath, legacyPassword),
-      "importReady",
-    );
+    const preview = await run(async () => {
+      const bytes = await readFile(legacyPath);
+      return Api.importLegacyPreview(vaultLabel(legacyPath), Array.from(bytes), legacyPassword);
+    }, "importReady");
     if (preview) setImportPreview(preview);
   };
 
@@ -449,12 +473,13 @@ function App() {
       setNotice({ kind: "error", text: t("requiredImportPreview") });
       return;
     }
-    const savedEntries = await run(
-      () => Api.importLegacyCommit(importPreview.importId),
-      "importDone",
-    );
-    if (savedEntries) {
-      setEntries(savedEntries);
+    const snapshot = await run(async () => {
+      const snap = await Api.importLegacyCommit(importPreview.importId);
+      await writeTextFile(vaultPath, snap.contents);
+      return snap;
+    }, "importDone");
+    if (snapshot) {
+      setEntries(snapshot.entries);
       closeImport();
       maybeAutoSync();
     }
