@@ -67,6 +67,8 @@ const es = {
   syncTest: "Probar conexión",
   syncSaveConfig: "Guardar configuración",
   syncNow: "Sincronizar ahora",
+  syncing: "Sincronizando…",
+  syncFailed: "Error de sincronización",
   syncOk: "Conexión correcta.",
   syncDone: "Sincronizado.",
   syncSaved: "Configuración guardada.",

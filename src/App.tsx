@@ -103,6 +103,7 @@ function App() {
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [syncConfig, setSyncConfig] = useState<SyncConfig | null>(null);
   const [syncForm, setSyncForm] = useState<SyncConfig>(defaultSync);
+  const [syncState, setSyncState] = useState<"idle" | "syncing" | "ok" | "error">("idle");
 
   const t = useMemo(() => createTranslator(preferences.language), [preferences.language]);
 
@@ -190,15 +191,17 @@ function App() {
     setScreen("unlock");
   };
 
-  // Best-effort background sync (on unlock / after saves). Failures (offline,
-  // not configured) are swallowed so they never block the local workflow.
+  // Silent background sync (on unlock / after saves): pull + merge + push and
+  // refresh the list. Failures (offline) are swallowed but reflected in syncState.
   const autoSync = async () => {
+    setSyncState("syncing");
     try {
       await Api.syncNow();
       const list = await Api.listEntries();
       setEntries(list);
+      setSyncState("ok");
     } catch {
-      /* ignored */
+      setSyncState("error");
     }
   };
 
@@ -206,11 +209,18 @@ function App() {
     if (syncConfig?.enabled) void autoSync();
   };
 
-  const runSyncNow = async () => {
-    const result = await run(() => Api.syncNow(), "syncDone");
+  // Manual sync (top bar / settings): same work, but surfaces success/error.
+  const manualSync = async () => {
+    setSyncState("syncing");
+    const result = await run(async () => {
+      await Api.syncNow();
+      return Api.listEntries();
+    }, "syncDone");
     if (result) {
-      const list = await run(() => Api.listEntries());
-      if (list) setEntries(list);
+      setEntries(result);
+      setSyncState("ok");
+    } else {
+      setSyncState("error");
     }
   };
 
@@ -219,6 +229,8 @@ function App() {
     if (status) {
       setSyncConfig(syncForm);
       setVaultStatus(status);
+      // Push immediately so the remote file appears right after configuring.
+      if (syncForm.enabled) await manualSync();
     }
   };
 
@@ -269,6 +281,7 @@ function App() {
       setCreatePasswordRepeat("");
       setSyncConfig(null);
       setSyncForm(defaultSync);
+      setSyncState("idle");
       setScreen("vault");
     }
   };
@@ -308,6 +321,7 @@ function App() {
     setVaultPath("");
     setSyncConfig(null);
     setSyncForm(defaultSync);
+    setSyncState("idle");
     setScreen("start");
   };
 
@@ -572,6 +586,26 @@ function App() {
               </div>
             </div>
             <div className="topbar-actions">
+              {syncConfig?.enabled && (
+                <button
+                  className={`icon-button sync-button ${syncState}`}
+                  type="button"
+                  title={
+                    syncState === "syncing"
+                      ? t("syncing")
+                      : syncState === "error"
+                        ? t("syncFailed")
+                        : syncState === "ok"
+                          ? t("syncDone")
+                          : t("syncNow")
+                  }
+                  aria-label={t("syncNow")}
+                  onClick={manualSync}
+                  disabled={busy || syncState === "syncing"}
+                >
+                  <RefreshCw size={19} className={syncState === "syncing" ? "spin" : ""} aria-hidden />
+                </button>
+              )}
               <button className="icon-button" type="button" title={t("generator")} aria-label={t("generator")} onClick={() => setGeneratorOpen(true)}>
                 <Wand2 size={19} aria-hidden />
               </button>
@@ -829,8 +863,8 @@ function App() {
               <button
                 className="secondary-button"
                 type="button"
-                onClick={runSyncNow}
-                disabled={busy || !syncConfig?.enabled}
+                onClick={manualSync}
+                disabled={busy || syncState === "syncing" || !syncConfig?.enabled}
               >
                 <RefreshCw size={18} aria-hidden />
                 {t("syncNow")}

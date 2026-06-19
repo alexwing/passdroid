@@ -69,6 +69,8 @@ const en: Record<keyof typeof es, string> = {
   syncTest: "Test connection",
   syncSaveConfig: "Save settings",
   syncNow: "Sync now",
+  syncing: "Syncing…",
+  syncFailed: "Sync failed",
   syncOk: "Connection OK.",
   syncDone: "Synced.",
   syncSaved: "Settings saved.",
