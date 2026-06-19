@@ -35,6 +35,7 @@ pub fn run() {
             vault::get_sync_config,
             vault::set_sync_config,
             vault::test_sync,
+            vault::sync_check,
             vault::sync_now,
             preferences::get_preferences,
             preferences::save_preferences

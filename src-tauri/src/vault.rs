@@ -15,8 +15,9 @@ use crate::{
     },
     legacy,
     models::{
-        EntriesSnapshot, GeneratePasswordOptions, ImportPreview, ImportPreviewEntry, SyncConfig,
-        SyncResult, VaultData, VaultEntry, VaultEnvelope, VaultHeader, VaultSnapshot, VaultStatus,
+        EntriesSnapshot, GeneratePasswordOptions, ImportPreview, ImportPreviewEntry, SyncCheck,
+        SyncConfig, SyncResult, VaultData, VaultEntry, VaultEnvelope, VaultHeader, VaultSnapshot,
+        VaultStatus,
     },
     sync,
 };
@@ -285,6 +286,44 @@ impl VaultManager {
         Ok(VaultSnapshot {
             status: session.status(),
             contents,
+        })
+    }
+
+    /// Read-only check of the remote vault's revision (no merge, no push), so the
+    /// UI can offer to download a newer remote copy when opening.
+    pub fn sync_check(&self) -> Result<SyncCheck, String> {
+        let session = self.session.as_ref().ok_or_else(|| "vault_locked".to_string())?;
+        let local_revision = session.data.revision;
+        let config = match read_sync_config(&session.data) {
+            Some(config) if config.enabled => config,
+            _ => {
+                return Ok(SyncCheck {
+                    configured: false,
+                    remote_revision: None,
+                    local_revision,
+                })
+            }
+        };
+
+        let remote_revision = match sync::download(&config)? {
+            Some(bytes) => {
+                let envelope: VaultEnvelope =
+                    serde_json::from_slice(&bytes).map_err(|_| "sync_remote_invalid".to_string())?;
+                if envelope.header.vault_id != session.header.vault_id {
+                    return Err("sync_vault_mismatch".to_string());
+                }
+                let remote: VaultData =
+                    open_payload(&envelope.payload, &envelope.header, &session.key[..])
+                        .map_err(|_| "sync_decrypt_failed".to_string())?;
+                Some(remote.revision)
+            }
+            None => None,
+        };
+
+        Ok(SyncCheck {
+            configured: true,
+            remote_revision,
+            local_revision,
         })
     }
 
@@ -592,6 +631,11 @@ pub fn set_sync_config(
 #[tauri::command]
 pub fn test_sync(config: SyncConfig) -> Result<(), String> {
     sync::test_connection(&config)
+}
+
+#[tauri::command]
+pub fn sync_check(state: State<'_, SharedVaultManager>) -> Result<SyncCheck, String> {
+    manager!(state).sync_check()
 }
 
 #[tauri::command]

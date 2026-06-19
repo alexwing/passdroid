@@ -80,6 +80,9 @@ const en: Record<keyof typeof es, string> = {
   syncFailed: "Sync failed",
   syncOk: "Connection OK.",
   syncDone: "Synced.",
+  syncNewerTitle: "Newer version available",
+  syncNewerMessage: "There is a newer version of this vault on the server. Download and merge it? (Close to keep the local one.)",
+  syncDownload: "Download and merge",
   syncSaved: "Settings saved.",
   syncPlainWarning:
     "FTP sends credentials unencrypted; the vault content stays encrypted regardless. Use a dedicated FTP user and rotate the password.",

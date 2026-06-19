@@ -181,6 +181,16 @@ fn default_ftp_port() -> u16 {
     21
 }
 
+/// Lightweight remote check used on unlock: compares the remote vault's revision
+/// to the local one so the UI can offer to download a newer remote copy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncCheck {
+    pub configured: bool,
+    pub remote_revision: Option<u64>,
+    pub local_revision: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncResult {

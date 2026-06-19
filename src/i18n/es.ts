@@ -78,6 +78,9 @@ const es = {
   syncFailed: "Error de sincronización",
   syncOk: "Conexión correcta.",
   syncDone: "Sincronizado.",
+  syncNewerTitle: "Versión más reciente disponible",
+  syncNewerMessage: "Hay una versión más reciente de este vault en el servidor. ¿Descargarla y fusionarla? (Cerrar para mantener la local.)",
+  syncDownload: "Descargar y fusionar",
   syncSaved: "Configuración guardada.",
   syncPlainWarning:
     "FTP envía las credenciales sin cifrar; el contenido del vault va cifrado igualmente. Usa un usuario FTP dedicado y rota la contraseña.",

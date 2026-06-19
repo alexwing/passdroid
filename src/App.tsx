@@ -45,6 +45,7 @@ import Api, {
   GeneratePasswordOptions,
   ImportPreview,
   Preferences,
+  SyncCheck,
   SyncConfig,
   VaultEntry,
   VaultStatus,
@@ -166,6 +167,7 @@ function App() {
   const [syncConfig, setSyncConfig] = useState<SyncConfig | null>(null);
   const [syncForm, setSyncForm] = useState<SyncConfig>(defaultSync);
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "ok" | "error">("idle");
+  const [syncPrompt, setSyncPrompt] = useState<SyncCheck | null>(null);
   // Suppress the auto-lock-on-background while a native file picker is in front
   // (the picker backgrounds the webview, which would otherwise trigger a lock).
   const suppressLock = useRef(false);
@@ -463,6 +465,7 @@ function App() {
       setSyncConfig(null);
       setSyncForm(defaultSync);
       setSyncState("idle");
+      setSyncPrompt(null);
       setEditing(false);
       setScreen("vault");
     }
@@ -495,7 +498,17 @@ function App() {
       const cfg = await Api.getSyncConfig().catch(() => null);
       setSyncConfig(cfg);
       setSyncForm(cfg ?? defaultSync);
-      if (cfg?.enabled) void autoSync();
+      // On open, check the remote and offer to download it if it is newer,
+      // instead of silently pulling.
+      if (cfg?.enabled) {
+        Api.syncCheck()
+          .then((check) => {
+            if (check.remoteRevision != null && check.remoteRevision > check.localRevision) {
+              setSyncPrompt(check);
+            }
+          })
+          .catch(() => {});
+      }
     }
   };
 
@@ -513,6 +526,7 @@ function App() {
     setSyncConfig(null);
     setSyncForm(defaultSync);
     setSyncState("idle");
+    setSyncPrompt(null);
     setEditing(false);
     setScreen("start");
   };
@@ -800,9 +814,9 @@ function App() {
         <>
           <header className="topbar">
             <div className="topbar-title">
-              <FileLock2 size={26} aria-hidden />
+              <VaultGlyph icon={vaultStatus?.icon || DEFAULT_VAULT_ICON} size={26} />
               <div>
-                <strong>{t("appName")}</strong>
+                <strong>{vaultName(vaultPath)}</strong>
                 <span>{entries.length}</span>
               </div>
             </div>
@@ -1211,6 +1225,24 @@ function App() {
               </div>
             </button>
           </div>
+        </Modal>
+      )}
+
+      {syncPrompt && (
+        <Modal title={t("syncNewerTitle")} onClose={() => setSyncPrompt(null)} t={t}>
+          <p className="hint">{t("syncNewerMessage")}</p>
+          <button
+            className="primary-button full"
+            type="button"
+            onClick={() => {
+              setSyncPrompt(null);
+              void manualSync();
+            }}
+            disabled={busy}
+          >
+            <Download size={18} aria-hidden />
+            {t("syncDownload")}
+          </button>
         </Modal>
       )}
 

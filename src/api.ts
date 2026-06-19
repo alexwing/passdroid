@@ -70,6 +70,12 @@ export interface SyncConfig {
   remoteFile: string;
 }
 
+export interface SyncCheck {
+  configured: boolean;
+  remoteRevision: number | null;
+  localRevision: number;
+}
+
 export interface SyncResult {
   pulled: boolean;
   revision: number;
@@ -108,6 +114,7 @@ const Api = {
   getSyncConfig: () => invoke<SyncConfig | null>("get_sync_config"),
   setSyncConfig: (config: SyncConfig) => invoke<VaultSnapshot>("set_sync_config", { config }),
   testSync: (config: SyncConfig) => invoke<void>("test_sync", { config }),
+  syncCheck: () => invoke<SyncCheck>("sync_check"),
   syncNow: () => invoke<SyncResult>("sync_now"),
 };
 
