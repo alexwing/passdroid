@@ -22,12 +22,14 @@ import {
   Mail,
   Moon,
   Plus,
+  QrCode,
   RefreshCw,
   Save,
   Search,
   Server,
   Settings,
   ShieldCheck,
+  Sliders,
   Sparkles,
   Star,
   Sun,
@@ -52,9 +54,14 @@ import Api, {
   VaultEntry,
   VaultStatus,
 } from "./api";
-import { createTranslator, resolveLanguage, ThemePreference, TranslationKey } from "./i18n";
+import type { ThemePreference } from "./i18n";
+import { useTranslation } from "./context/LanguageContext";
+import { useTheme } from "./context/ThemeContext";
+import { QrCameraScanner } from "./components/QrCameraScanner";
+import { QrVaultModal, parseQrPayload } from "./components/QrVaultModal";
 
 type Screen = "start" | "unlock" | "vault";
+type SettingsTab = "general" | "sync" | "security";
 type Notice = { kind: "success" | "error"; text: string } | null;
 
 const defaultPreferences: Preferences = {
@@ -146,6 +153,7 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -175,7 +183,15 @@ function App() {
   // (the picker backgrounds the webview, which would otherwise trigger a lock).
   const suppressLock = useRef(false);
 
-  const t = useMemo(() => createTranslator(preferences.language), [preferences.language]);
+  // i18n and theme are now managed by their respective contexts (LanguageProvider / ThemeProvider).
+  const { t, language, setLanguage } = useTranslation();
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
+
+  // QR vault linking state
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
+  const [qrShowModalOpen, setQrShowModalOpen] = useState(false);
+  const [qrLinkConfig, setQrLinkConfig] = useState<SyncConfig | null>(null);
+  const [qrLinkPassword, setQrLinkPassword] = useState("");
 
   useEffect(() => {
     Api.getPreferences()
@@ -185,24 +201,6 @@ function App() {
       .then(setIsAndroid)
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    const applyTheme = () => {
-      const resolvedTheme =
-        preferences.theme === "system"
-          ? window.matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "light"
-          : preferences.theme;
-      document.documentElement.dataset.theme = resolvedTheme;
-      document.documentElement.lang = resolveLanguage(preferences.language);
-    };
-
-    applyTheme();
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    media.addEventListener("change", applyTheme);
-    return () => media.removeEventListener("change", applyTheme);
-  }, [preferences]);
 
   // Security: lock the open vault when the app goes to the background (app
   // switch, recents, screen off) so returning requires the master password
@@ -250,7 +248,7 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  const run = async <T,>(operation: () => Promise<T>, successKey?: TranslationKey) => {
+  const run = async <T,>(operation: () => Promise<T>, successKey?: string) => {
     setBusy(true);
     setNotice(null);
     try {
@@ -732,6 +730,80 @@ function App() {
     setImportPreview(null);
   };
 
+  // Handle a scanned QR code: parse payload and prompt for master password
+  const handleQrScan = (text: string) => {
+    setQrScannerOpen(false);
+    const config = parseQrPayload(text);
+    if (!config) {
+      setNotice({ kind: "error", text: t("qrInvalidPayload") });
+      return;
+    }
+    setQrLinkConfig(config);
+    setQrLinkPassword("");
+  };
+
+  const finishQrLink = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!qrLinkConfig) return;
+    if (!qrLinkPassword) {
+      setNotice({ kind: "error", text: t("err_master_password_incorrect") });
+      return;
+    }
+
+    const config = qrLinkConfig;
+    const password = qrLinkPassword;
+
+    let path: string;
+    const name = config.remoteFile.replace(/\.[^.]+$/, "") || "passdroid";
+    if (isAndroid) {
+      try {
+        path = await androidVaultPath(name);
+      } catch {
+        setNotice({ kind: "error", text: t("err_unknown") });
+        return;
+      }
+    } else {
+      try {
+        const base = await appLocalDataDir();
+        const dir = await join(base, "vaults");
+        await mkdir(dir, { recursive: true });
+        path = await join(dir, config.remoteFile);
+      } catch {
+        setNotice({ kind: "error", text: t("err_unknown") });
+        return;
+      }
+    }
+
+    const success = await run(async () => {
+      // 1. Download vault from FTP
+      const contents = await Api.downloadFtpVault(config);
+      // 2. Unlock & verify master password
+      const status = await Api.unlockVault(contents, password);
+      // 3. Save local vault file
+      await writeTextFile(path, contents);
+      // 4. Update sync config inside vault
+      await Api.setSyncConfig(config).catch(() => {});
+      return { path, status };
+    }, "qrVaultLinked");
+
+    if (success) {
+      setVaultPath(success.path);
+      setVaultStatus(success.status);
+      rememberVault(success.path);
+      cacheVaultIcon(success.path, success.status.icon);
+      const loaded = await Api.listEntries().catch(() => []);
+      setEntries(loaded);
+      setSyncConfig(config);
+      setSyncForm(config);
+      setQrLinkConfig(null);
+      setQrLinkPassword("");
+      setDraft(emptyEntry());
+      setSelectedId("");
+      setEditing(false);
+      setScreen("vault");
+    }
+  };
+
   return (
     <div className="app-shell">
       {screen === "start" && (
@@ -773,6 +845,14 @@ function App() {
                 </div>
               )}
             </div>
+
+            <button className="qr-link-card" type="button" onClick={() => setQrScannerOpen(true)} disabled={busy}>
+              <QrCode size={22} aria-hidden />
+              <div>
+                <strong>{t("qrLinkViaQr")}</strong>
+                <span>{t("qrHowBody")}</span>
+              </div>
+            </button>
 
             <form className="panel" onSubmit={createVault}>
               <div className="panel-heading">
@@ -1035,150 +1115,199 @@ function App() {
 
       {settingsOpen && (
         <Modal title={t("settings")} onClose={closeSettings} t={t}>
-          <div className="settings-grid">
-            <section>
-              <h3>{t("theme")}</h3>
-              <Segmented
-                value={preferences.theme}
-                options={[
-                  { value: "system", label: t("system"), icon: <Settings size={16} aria-hidden /> },
-                  { value: "light", label: t("light"), icon: <Sun size={16} aria-hidden /> },
-                  { value: "dark", label: t("dark"), icon: <Moon size={16} aria-hidden /> },
-                ]}
-                onChange={(theme) => persistPreferences((prev) => ({ ...prev, theme: theme as ThemePreference }))}
-              />
-            </section>
-            <section>
-              <h3>{t("language")}</h3>
-              <Segmented
-                value={preferences.language}
-                options={[
-                  { value: "system", label: t("system"), icon: <Globe2 size={16} aria-hidden /> },
-                  { value: "es", label: t("spanish"), icon: <Globe2 size={16} aria-hidden /> },
-                  { value: "en", label: t("english"), icon: <Globe2 size={16} aria-hidden /> },
-                ]}
-                onChange={(language) => persistPreferences((prev) => ({ ...prev, language: language as Preferences["language"] }))}
-              />
-            </section>
+          <div className="settings-tabs">
+            <button
+              type="button"
+              className={`settings-tab ${settingsTab === "general" ? "active" : ""}`}
+              onClick={() => setSettingsTab("general")}
+            >
+              <Sliders size={16} aria-hidden />
+              <span>{t("tabGeneral")}</span>
+            </button>
+            <button
+              type="button"
+              className={`settings-tab ${settingsTab === "sync" ? "active" : ""}`}
+              onClick={() => setSettingsTab("sync")}
+            >
+              <Server size={16} aria-hidden />
+              <span>{t("tabSync")}</span>
+            </button>
+            <button
+              type="button"
+              className={`settings-tab ${settingsTab === "security" ? "active" : ""}`}
+              onClick={() => setSettingsTab("security")}
+            >
+              <ShieldCheck size={16} aria-hidden />
+              <span>{t("tabSecurity")}</span>
+            </button>
           </div>
 
-          <section className="stack-form">
-            <h3>{t("vaultIcon")}</h3>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => setIconPickerOpen(true)}
-              disabled={busy}
-            >
-              <VaultGlyph icon={vaultStatus?.icon || DEFAULT_VAULT_ICON} size={18} />
-              {t("chooseIcon")}
-            </button>
-          </section>
+          {settingsTab === "general" && (
+            <div className="stack-form">
+              <div className="settings-grid">
+                <section>
+                  <h3>{t("theme")}</h3>
+                  <Segmented
+                    value={themeMode}
+                    options={[
+                      { value: "system", label: t("system"), icon: <span aria-hidden>💻</span> },
+                      { value: "light", label: t("light"), icon: <span aria-hidden>☀️</span> },
+                      { value: "dark", label: t("dark"), icon: <span aria-hidden>🌙</span> },
+                    ]}
+                    onChange={(theme) => setThemeMode(theme as ThemePreference)}
+                  />
+                </section>
+                <section>
+                  <h3>{t("language")}</h3>
+                  <Segmented
+                    value={language}
+                    options={[
+                      { value: "system", label: t("system"), icon: <span aria-hidden>🌐</span> },
+                      { value: "es", label: "Español", icon: <span aria-hidden>🇪🇸</span> },
+                      { value: "en", label: "English", icon: <span aria-hidden>🇬🇧</span> },
+                    ]}
+                    onChange={(lang) => setLanguage(lang as Preferences["language"])}
+                  />
+                </section>
+              </div>
 
-          <form className="stack-form" onSubmit={changeMasterPassword}>
-            <h3>{t("changePassword")}</h3>
-            <PasswordInput
-              label={t("oldPassword")}
-              value={changePasswordForm.oldPassword}
-              onChange={(value) => setChangePasswordForm({ ...changePasswordForm, oldPassword: value })}
-            />
-            <PasswordInput
-              label={t("newPassword")}
-              value={changePasswordForm.newPassword}
-              onChange={(value) => setChangePasswordForm({ ...changePasswordForm, newPassword: value })}
-            />
-            <PasswordInput
-              label={t("repeatNewPassword")}
-              value={changePasswordForm.repeatPassword}
-              onChange={(value) => setChangePasswordForm({ ...changePasswordForm, repeatPassword: value })}
-            />
-            <button className="primary-button" type="submit" disabled={busy}>
-              <KeyRound size={18} aria-hidden />
-              {t("apply")}
-            </button>
-          </form>
+              <section className="stack-form">
+                <h3>{t("vaultIcon")}</h3>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setIconPickerOpen(true)}
+                  disabled={busy}
+                >
+                  <VaultGlyph icon={vaultStatus?.icon || DEFAULT_VAULT_ICON} size={18} />
+                  {t("chooseIcon")}
+                </button>
+              </section>
+            </div>
+          )}
 
-          <section className="stack-form">
-            <h3>{t("sync")}</h3>
-            <p className="sync-warning">{t("syncPlainWarning")}</p>
-            <Toggle
-              label={t("syncEnabled")}
-              checked={syncForm.enabled}
-              onChange={(enabled) => setSyncForm({ ...syncForm, enabled })}
-            />
-            <div className="settings-grid">
-              <label>
-                <span>{t("syncHost")}</span>
-                <input
-                  value={syncForm.host}
-                  onChange={(event) => setSyncForm({ ...syncForm, host: event.target.value })}
-                  autoComplete="off"
-                />
-              </label>
-              <label>
-                <span>{t("syncPort")}</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={65535}
-                  value={syncForm.port}
-                  onChange={(event) => setSyncForm({ ...syncForm, port: Number(event.target.value) })}
-                />
-              </label>
-              <label>
-                <span>{t("syncUser")}</span>
-                <input
-                  value={syncForm.username}
-                  onChange={(event) => setSyncForm({ ...syncForm, username: event.target.value })}
-                  autoComplete="off"
-                />
-              </label>
-              <label>
-                <span>{t("syncPassword")}</span>
-                <input
-                  type="password"
-                  value={syncForm.password}
-                  onChange={(event) => setSyncForm({ ...syncForm, password: event.target.value })}
-                  autoComplete="new-password"
-                />
-              </label>
-              <label>
-                <span>{t("syncDir")}</span>
-                <input
-                  value={syncForm.remoteDir}
-                  onChange={(event) => setSyncForm({ ...syncForm, remoteDir: event.target.value })}
-                  autoComplete="off"
-                />
-              </label>
-              <label>
-                <span>{t("syncFile")}</span>
-                <input
-                  value={syncForm.remoteFile}
-                  onChange={(event) => setSyncForm({ ...syncForm, remoteFile: event.target.value })}
-                  autoComplete="off"
-                />
-              </label>
-            </div>
-            <div className="sync-actions">
-              <button className="secondary-button" type="button" onClick={testSyncConnection} disabled={busy}>
-                <Globe2 size={18} aria-hidden />
-                {t("syncTest")}
+          {settingsTab === "sync" && (
+            <section className="stack-form">
+              <h3>{t("sync")}</h3>
+              <p className="sync-warning">{t("syncPlainWarning")}</p>
+              <Toggle
+                label={t("syncEnabled")}
+                checked={syncForm.enabled}
+                onChange={(enabled) => setSyncForm({ ...syncForm, enabled })}
+              />
+              <div className="settings-grid">
+                <label>
+                  <span>{t("syncHost")}</span>
+                  <input
+                    value={syncForm.host}
+                    onChange={(event) => setSyncForm({ ...syncForm, host: event.target.value })}
+                    autoComplete="off"
+                  />
+                </label>
+                <label>
+                  <span>{t("syncPort")}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={syncForm.port}
+                    onChange={(event) => setSyncForm({ ...syncForm, port: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  <span>{t("syncUser")}</span>
+                  <input
+                    value={syncForm.username}
+                    onChange={(event) => setSyncForm({ ...syncForm, username: event.target.value })}
+                    autoComplete="off"
+                  />
+                </label>
+                <label>
+                  <span>{t("syncPassword")}</span>
+                  <input
+                    type="password"
+                    value={syncForm.password}
+                    onChange={(event) => setSyncForm({ ...syncForm, password: event.target.value })}
+                    autoComplete="new-password"
+                  />
+                </label>
+                <label>
+                  <span>{t("syncDir")}</span>
+                  <input
+                    value={syncForm.remoteDir}
+                    onChange={(event) => setSyncForm({ ...syncForm, remoteDir: event.target.value })}
+                    autoComplete="off"
+                  />
+                </label>
+                <label>
+                  <span>{t("syncFile")}</span>
+                  <input
+                    value={syncForm.remoteFile}
+                    onChange={(event) => setSyncForm({ ...syncForm, remoteFile: event.target.value })}
+                    autoComplete="off"
+                  />
+                </label>
+              </div>
+              <div className="sync-actions">
+                <button className="secondary-button" type="button" onClick={testSyncConnection} disabled={busy}>
+                  <Globe2 size={18} aria-hidden />
+                  {t("syncTest")}
+                </button>
+                <button className="primary-button" type="button" onClick={saveSyncConfig} disabled={busy}>
+                  <Save size={18} aria-hidden />
+                  {t("syncSaveConfig")}
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={manualSync}
+                  disabled={busy || syncState === "syncing" || !syncConfig?.enabled}
+                >
+                  <RefreshCw size={18} aria-hidden />
+                  {t("syncNow")}
+                </button>
+              </div>
+              {syncConfig?.enabled && (
+                <button
+                  className="qr-link-card"
+                  type="button"
+                  onClick={() => setQrShowModalOpen(true)}
+                  disabled={busy}
+                >
+                  <QrCode size={22} aria-hidden />
+                  <div>
+                    <strong>{t("qrLinkDevice")}</strong>
+                    <span>{t("qrHowBody")}</span>
+                  </div>
+                </button>
+              )}
+            </section>
+          )}
+
+          {settingsTab === "security" && (
+            <form className="stack-form" onSubmit={changeMasterPassword}>
+              <h3>{t("changePassword")}</h3>
+              <PasswordInput
+                label={t("oldPassword")}
+                value={changePasswordForm.oldPassword}
+                onChange={(value) => setChangePasswordForm({ ...changePasswordForm, oldPassword: value })}
+              />
+              <PasswordInput
+                label={t("newPassword")}
+                value={changePasswordForm.newPassword}
+                onChange={(value) => setChangePasswordForm({ ...changePasswordForm, newPassword: value })}
+              />
+              <PasswordInput
+                label={t("repeatNewPassword")}
+                value={changePasswordForm.repeatPassword}
+                onChange={(value) => setChangePasswordForm({ ...changePasswordForm, repeatPassword: value })}
+              />
+              <button className="primary-button" type="submit" disabled={busy}>
+                <KeyRound size={18} aria-hidden />
+                {t("apply")}
               </button>
-              <button className="primary-button" type="button" onClick={saveSyncConfig} disabled={busy}>
-                <Save size={18} aria-hidden />
-                {t("syncSaveConfig")}
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={manualSync}
-                disabled={busy || syncState === "syncing" || !syncConfig?.enabled}
-              >
-                <RefreshCw size={18} aria-hidden />
-                {t("syncNow")}
-              </button>
-            </div>
-          </section>
+            </form>
+          )}
         </Modal>
       )}
 
@@ -1332,6 +1461,64 @@ function App() {
           </button>
         </Modal>
       )}
+
+      {/* QR Scanner Modal */}
+      <QrCameraScanner
+        isOpen={qrScannerOpen}
+        onScan={handleQrScan}
+        onClose={() => setQrScannerOpen(false)}
+      />
+
+      {/* QR Show Modal (for sharing FTP config) */}
+      {syncConfig && (
+        <QrVaultModal
+          isOpen={qrShowModalOpen}
+          syncConfig={syncConfig}
+          onClose={() => setQrShowModalOpen(false)}
+        />
+      )}
+
+      {/* QR Link Password Prompt Modal */}
+      {qrLinkConfig && (
+        <Modal
+          title={t("qrLinkViaQr")}
+          onClose={() => {
+            setQrLinkConfig(null);
+            setQrLinkPassword("");
+          }}
+          t={t}
+        >
+          <form className="stack-form" onSubmit={finishQrLink}>
+            <div className="vault-chip">
+              <Server size={20} aria-hidden />
+              <span>{qrLinkConfig.host} &bull; {qrLinkConfig.remoteFile}</span>
+            </div>
+            <p className="hint">{t("qrEnterMasterPassword")}</p>
+            <PasswordInput
+              label={t("masterPassword")}
+              value={qrLinkPassword}
+              onChange={setQrLinkPassword}
+              autoFocus
+            />
+            <div className="form-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  setQrLinkConfig(null);
+                  setQrLinkPassword("");
+                }}
+              >
+                {t("cancel")}
+              </button>
+              <button className="primary-button" type="submit" disabled={busy}>
+                <Download size={18} aria-hidden />
+                {t("syncDownload")}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1375,7 +1562,7 @@ function FilePickerRow({
   label: string;
   path: string;
   onPick: () => void;
-  t: ReturnType<typeof createTranslator>;
+  t: (key: string) => string;
 }) {
   return (
     <label>
@@ -1442,7 +1629,7 @@ function Modal({
   title: string;
   children: ReactNode;
   onClose: () => void;
-  t: ReturnType<typeof createTranslator>;
+  t: (key: string) => string;
 }) {
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
@@ -1470,9 +1657,9 @@ function Modal({
   );
 }
 
-function formatError(error: unknown, t: ReturnType<typeof createTranslator>) {
+function formatError(error: unknown, t: (key: string) => string) {
   const raw = typeof error === "string" ? error : error instanceof Error ? error.message : "unknown";
-  const key = `err_${raw}` as TranslationKey;
+  const key = `err_${raw}`;
   const translated = t(key);
   return translated === key ? t("err_unknown") : translated;
 }

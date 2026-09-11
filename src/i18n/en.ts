@@ -156,6 +156,41 @@ const en: Record<keyof typeof es, string> = {
   err_sync_vault_mismatch: "The remote vault belongs to another vault.",
   err_sync_decrypt_failed: "Could not decrypt the remote vault (different master password?).",
   err_unknown: "The operation could not be completed.",
+
+  // QR Vault Linking
+  qrLinkDevice: "Link another device",
+  qrShowCode: "Show QR code",
+  qrScanCode: "Scan QR code",
+  qrLinkViaQr: "Link via QR",
+  qrHowTitle: "ℹ️ How does it work?",
+  qrHowBody:
+    "The new device will read the FTP connection details and download the vault file.",
+  qrSecurityNote:
+    "For security, the master password is not included in the QR code. The new user will enter it to decrypt the downloaded vault.",
+  qrCopyConfig: "Copy configuration",
+  qrConfigCopied: "Configuration copied to clipboard.",
+  qrScanTitle: "Scan vault QR",
+  qrStarting: "Starting camera…",
+  qrAnalyzing: "Analyzing image…",
+  qrRetry: "Retry",
+  qrUploadImage: "Upload photo/image",
+  qrSwitchCamera: "Switch camera",
+  qrNotSupported: "Camera is not available on this device.",
+  qrPermissionDenied: "Camera permission denied. Enable it in system settings.",
+  qrNoCameraFound: "No camera was found.",
+  qrCameraFailed: "Could not start camera: {{error}}",
+  qrNoQrFound: "No QR code found in the image.",
+  qrPasteClipboard: "Paste from clipboard",
+  qrInvalidPayload: "The QR code does not contain a valid Passdroid configuration.",
+  qrConnecting: "Connecting to FTP server…",
+  qrDownloading: "Downloading vault…",
+  qrEnterMasterPassword: "Enter the master password to decrypt the downloaded vault.",
+  qrVaultLinked: "Vault linked successfully.",
+
+  // Tabs de Ajustes (Settings Tabs)
+  tabGeneral: "General",
+  tabSync: "Sync",
+  tabSecurity: "Security",
 };
 
 export default en;

@@ -154,6 +154,41 @@ const es = {
   err_sync_vault_mismatch: "El vault remoto pertenece a otro vault.",
   err_sync_decrypt_failed: "No se pudo descifrar el vault remoto (¿clave maestra distinta?).",
   err_unknown: "No se pudo completar la operación.",
+
+  // QR Vault Linking
+  qrLinkDevice: "Vincular otro dispositivo",
+  qrShowCode: "Mostrar código QR",
+  qrScanCode: "Escanear código QR",
+  qrLinkViaQr: "Vincular mediante QR",
+  qrHowTitle: "ℹ️ ¿Cómo funciona?",
+  qrHowBody:
+    "El nuevo equipo leerá los datos de conexión FTP y descargará el archivo de la bóveda.",
+  qrSecurityNote:
+    "Por seguridad, la contraseña maestra no va en el QR. El nuevo usuario la escribirá para descifrar la bóveda.",
+  qrCopyConfig: "Copiar configuración",
+  qrConfigCopied: "Configuración copiada al portapapeles.",
+  qrScanTitle: "Escanear QR de bóveda",
+  qrStarting: "Iniciando cámara…",
+  qrAnalyzing: "Analizando imagen…",
+  qrRetry: "Reintentar",
+  qrUploadImage: "Subir foto/imagen",
+  qrSwitchCamera: "Cambiar cámara",
+  qrNotSupported: "La cámara no está disponible en este dispositivo.",
+  qrPermissionDenied: "Permiso de cámara denegado. Actívalo en los ajustes del sistema.",
+  qrNoCameraFound: "No se encontró ninguna cámara.",
+  qrCameraFailed: "No se pudo iniciar la cámara: {{error}}",
+  qrNoQrFound: "No se encontró un código QR en la imagen.",
+  qrPasteClipboard: "Pegar del portapapeles",
+  qrInvalidPayload: "El código QR no contiene una configuración válida de Passdroid.",
+  qrConnecting: "Conectando al servidor FTP…",
+  qrDownloading: "Descargando bóveda…",
+  qrEnterMasterPassword: "Introduce la clave maestra para descifrar la bóveda descargada.",
+  qrVaultLinked: "Bóveda vinculada correctamente.",
+
+  // Tabs de Ajustes (Settings Tabs)
+  tabGeneral: "General",
+  tabSync: "Sincronización",
+  tabSecurity: "Seguridad",
 };
 
 export default es;

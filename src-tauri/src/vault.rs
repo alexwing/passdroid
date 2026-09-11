@@ -640,6 +640,13 @@ pub fn test_sync(config: SyncConfig) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn download_ftp_vault(config: SyncConfig) -> Result<String, String> {
+    let bytes = sync::download(&config)?
+        .ok_or_else(|| "sync_download_failed".to_string())?;
+    String::from_utf8(bytes).map_err(|_| "vault_file_invalid".to_string())
+}
+
+#[tauri::command]
 pub fn sync_check(state: State<'_, SharedVaultManager>) -> Result<SyncCheck, String> {
     manager!(state).sync_check()
 }

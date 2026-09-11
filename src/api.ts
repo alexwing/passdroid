@@ -114,6 +114,7 @@ const Api = {
   getSyncConfig: () => invoke<SyncConfig | null>("get_sync_config"),
   setSyncConfig: (config: SyncConfig) => invoke<VaultSnapshot>("set_sync_config", { config }),
   testSync: (config: SyncConfig) => invoke<void>("test_sync", { config }),
+  downloadFtpVault: (config: SyncConfig) => invoke<string>("download_ftp_vault", { config }),
   syncCheck: () => invoke<SyncCheck>("sync_check"),
   syncNow: () => invoke<SyncResult>("sync_now"),
 };
