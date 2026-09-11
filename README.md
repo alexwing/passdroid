@@ -19,11 +19,17 @@ private storage and syncs across devices over the built-in FTP sync.
 
 - **Vault management** — create, unlock and lock vaults; add / edit / delete entries (title,
   username, password, URL, notes) with instant search.
-- **Password generator** — length plus upper/lower/number/symbol toggles.
-- **Per-vault icon** — choose an icon from a curated set; it is stored inside the vault (so it
-  syncs across devices) and shown on the start, unlock and vault screens.
+- **QR Vault Linking (Zero-Knowledge)** — quickly connect another phone or desktop by generating
+  and scanning an FTP configuration QR code (`pdvault://`). Includes a native camera scanner,
+  fallback photo/image upload, and clipboard paste. The master password is **never** included
+  in the QR payload.
 - **Remote sync over FTP** — optional. On open, if the server copy is newer it offers to download
   and merge it; after each change it pushes, merging by `id` / `updated_at` (see *Remote sync*).
+- **Tabbed Settings** — organized into *General* (appearance, language, vault icon), *Sync*
+  (FTP server setup, testing, manual sync, and QR device link), and *Security* (master password change).
+- **Per-vault icon** — choose an icon from a curated set; it is stored inside the vault (so it
+  syncs across devices) and shown on the start, unlock and vault screens.
+- **Password generator** — length plus upper/lower/number/symbol toggles.
 - **Recent vaults** — re-open quickly from the start screen (shown by name).
 - **Import** — migrate from the original Passdroid app (cleartext XML, encrypted `sqt`, or a
   `password.db` SQLite database).
@@ -31,8 +37,19 @@ private storage and syncs across devices over the built-in FTP sync.
 - **Security hardening** — screenshots / screen-recording are blocked and the recents thumbnail is
   blanked (Android `FLAG_SECURE`); the vault auto-locks when the app goes to the background and
   asks for that vault's master password again on return.
-- **UX** — light / dark / system themes, Spanish / English, copy username & password, open a valid
-  URL in the browser, responsive desktop layout with a full-screen entry editor on mobile.
+- **UX & Localization** — live light / dark / system theme switching synchronized with OS settings,
+  full English and Spanish internationalization with auto-detection, copy username & password,
+  open URLs in default browser, and responsive mobile layout with full-screen editor.
+
+## Downloads & Releases
+
+Automated multiplatform releases are available on [GitHub Releases](https://github.com/alexwing/passdroid/releases):
+
+- 🤖 **Android**: APK package (`.apk`, signed, compatible with Android 7.0+ / API 24+)
+- 🪟 **Windows**:
+  - **Setup Installer** (`.exe`, NSIS installer)
+  - **Standalone Portable** (`.exe`, portable single executable without installation)
+  - **MSI Installer** (`.msi`, enterprise installer package)
 
 ## Security model
 
@@ -122,6 +139,11 @@ The vault is a single encrypted file, so it syncs as a blob.
   > Plain FTP transmits the login in clear text — the vault *content* stays encrypted
   > (XChaCha20-Poly1305), but use a **dedicated, least-privilege FTP account**. FTPS/SFTP is a
   > planned hardening step.
+
+- **QR Device Linking** (Settings → *Sync* → *Link another device*): generate a QR code with the
+  FTP parameters (`pdvault://`). On a second phone or desktop, click **Link via QR** on the start
+  screen, scan it with the camera (or upload an image / paste clipboard), enter your master password,
+  and the app pulls the vault and unlocks it immediately. The master password **never** travels in the QR code.
 
 - **On Android** the vault lives in the app's private storage (a real, always-accessible path —
   Android revokes Storage-Access-Framework permissions on restart, so a picked Documents/Drive
