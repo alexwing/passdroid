@@ -228,14 +228,7 @@ jobs:
         with:
           tag_name: ${{ steps.release_info.outputs.tag_name }}
           name: ${{ steps.release_info.outputs.title }}
-          body: |
-            ## Passdroid ${{ steps.release_info.outputs.tag_name }}
-
-            ### 📦 Binarios disponibles / Available Downloads:
-            - 🤖 **Android (APK)**: `Passdroid-v${{ steps.release_info.outputs.version }}-Android.apk`
-            - 🪟 **Windows (Instalador Setup)**: `Passdroid-v${{ steps.release_info.outputs.version }}-Setup.exe`
-            - 🪟 **Windows (Standalone / Portable)**: `Passdroid-v${{ steps.release_info.outputs.version }}-Standalone.exe`
-            - 🪟 **Windows (MSI)**: `Passdroid-v${{ steps.release_info.outputs.version }}.msi`
+          body_path: RELEASE_NOTES.md
           files: release-assets/*
           draft: false
           prerelease: false
