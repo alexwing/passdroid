@@ -148,12 +148,10 @@ jobs:
           keytool -list -keystore src-tauri/gen/android/app/release.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null
           echo "Keystore verified successfully."
 
-          cat <<EOF > src-tauri/gen/android/app/keystore.properties
-storeFile=release.jks
-storePassword=$KEYSTORE_PASSWORD
-keyAlias=$KEY_ALIAS
-keyPassword=$KEY_PASSWORD
-EOF
+          echo "storeFile=release.jks" > src-tauri/gen/android/app/keystore.properties
+          echo "storePassword=$KEYSTORE_PASSWORD" >> src-tauri/gen/android/app/keystore.properties
+          echo "keyAlias=$KEY_ALIAS" >> src-tauri/gen/android/app/keystore.properties
+          echo "keyPassword=$KEY_PASSWORD" >> src-tauri/gen/android/app/keystore.properties
 
       - name: Make gradlew executable
         run: chmod +x src-tauri/gen/android/gradlew
