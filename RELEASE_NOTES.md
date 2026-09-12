@@ -1,6 +1,17 @@
-# Passdroid v3.1.1
+# Passdroid v3.1.2
 
-## 🚀 What's New in v3.1.1
+## 🚀 What's New in v3.1.2
+
+### 🔑 Official Android Keystore & Seamless APK Updates
+- **Permanent Release Certificate Signing**: Configured CI release pipeline with the official Passdroid release keystore (`passdroid-release.jks`). Prevents certificate mismatch (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`) so future Android updates install directly over existing versions without having to uninstall.
+- **Strict Keystore Integrity Verification**: CI build automatically validates keystore and alias certificates during the build process, failing fast if credentials are not present or corrupted.
+
+> [!NOTE]
+> If you previously installed the v3.1.0 or v3.1.1 APKs (which had temporary runner keys generated during the transition to GitHub Actions), please uninstall that interim build once before installing v3.1.2. If you are updating from v3.0.0 or any local release build, v3.1.2 installs directly over it. All future updates from v3.1.2 onward will update smoothly without losing data.
+
+---
+
+## 📦 Prior v3.1.1 Highlights
 
 ### 📸 Camera & Android Permissions Fix
 - **Android Camera Permissions**: Added `android.permission.CAMERA` to `AndroidManifest.xml` so Android properly prompts the user for camera access when opening the QR code scanner.
@@ -41,7 +52,7 @@
 ---
 
 ### 📦 Available Downloads:
-- 🤖 **Android (APK)**: `Passdroid-v3.1.1-Android.apk`
-- 🪟 **Windows (Setup Installer)**: `Passdroid-v3.1.1-Setup.exe`
-- 🪟 **Windows (Standalone / Portable)**: `Passdroid-v3.1.1-Standalone.exe`
-- 🪟 **Windows (MSI Installer)**: `Passdroid-v3.1.1.msi`
+- 🤖 **Android (APK)**: `Passdroid-v3.1.2-Android.apk`
+- 🪟 **Windows (Setup Installer)**: `Passdroid-v3.1.2-Setup.exe`
+- 🪟 **Windows (Standalone / Portable)**: `Passdroid-v3.1.2-Standalone.exe`
+- 🪟 **Windows (MSI Installer)**: `Passdroid-v3.1.2.msi`

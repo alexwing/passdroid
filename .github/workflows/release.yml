@@ -128,27 +128,32 @@ jobs:
         run: npm ci
 
       - name: Configure Android Keystore for Signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         shell: bash
         run: |
           mkdir -p src-tauri/gen/android/app
-          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-            echo "Using custom keystore from repository secrets..."
-            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > src-tauri/gen/android/app/release.jks
-            echo "storeFile=release.jks" > src-tauri/gen/android/app/keystore.properties
-            echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> src-tauri/gen/android/app/keystore.properties
-            echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> src-tauri/gen/android/app/keystore.properties
-            echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> src-tauri/gen/android/app/keystore.properties
-          else
-            echo "No custom keystore secret found. Generating self-signed release keystore..."
-            keytool -genkey -v -keystore src-tauri/gen/android/app/release.jks \
-              -alias passdroid -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass passdroid -keypass passdroid \
-              -dname "CN=Passdroid, OU=App, O=Passdroid, L=Madrid, S=Madrid, C=ES"
-            echo "storeFile=release.jks" > src-tauri/gen/android/app/keystore.properties
-            echo "storePassword=passdroid" >> src-tauri/gen/android/app/keystore.properties
-            echo "keyAlias=passdroid" >> src-tauri/gen/android/app/keystore.properties
-            echo "keyPassword=passdroid" >> src-tauri/gen/android/app/keystore.properties
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is not configured! Release APKs MUST be signed with the official release keystore to ensure update compatibility."
+            exit 1
           fi
+
+          echo "Configuring official keystore from repository secrets..."
+          echo "$KEYSTORE_BASE64" | base64 -d > src-tauri/gen/android/app/release.jks
+
+          # Validate keystore integrity
+          keytool -list -keystore src-tauri/gen/android/app/release.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null
+          echo "Keystore verified successfully."
+
+          cat <<EOF > src-tauri/gen/android/app/keystore.properties
+storeFile=release.jks
+storePassword=$KEYSTORE_PASSWORD
+keyAlias=$KEY_ALIAS
+keyPassword=$KEY_PASSWORD
+EOF
 
       - name: Make gradlew executable
         run: chmod +x src-tauri/gen/android/gradlew

@@ -1,6 +1,6 @@
 [package]
 name = "passdroid-next"
-version = "3.1.1"
+version = "3.1.2"
 description = "Modern Tauri password vault compatible with Passdroid migration"
 authors = ["Passdroid Next"]
 edition = "2021"
