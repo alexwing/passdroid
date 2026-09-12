@@ -1,6 +1,6 @@
 {
   "name": "passdroid-next",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "Modern Tauri password vault compatible with Passdroid migration",
   "type": "module",
   "license": "GPL-3.0-or-later",

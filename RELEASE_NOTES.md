@@ -1,6 +1,15 @@
-# Passdroid v3.1.0
+# Passdroid v3.1.1
 
-## 🚀 What's New in v3.1.0
+## 🚀 What's New in v3.1.1
+
+### 📸 Camera & Android Permissions Fix
+- **Android Camera Permissions**: Added `android.permission.CAMERA` to `AndroidManifest.xml` so Android properly prompts the user for camera access when opening the QR code scanner.
+- **Haptic Feedback & Media Access**: Added `android.permission.VIBRATE` for scanner vibration on scan success, as well as `READ_MEDIA_IMAGES` / `READ_EXTERNAL_STORAGE` for QR image file uploads.
+- **Hardware Feature Flags**: Added `android.hardware.camera` and `android.hardware.camera.autofocus` with `android:required="false"` to ensure full compatibility across all Android devices and form factors.
+
+---
+
+## 📦 Prior v3.1.0 Highlights
 
 ### 🌐 Full Internationalization (i18n Context)
 - **English & Spanish**: Automatic OS system language detection with in-app switcher (`🌐 System`, `🇪🇸 Español`, `🇬🇧 English`).
@@ -32,7 +41,7 @@
 ---
 
 ### 📦 Available Downloads:
-- 🤖 **Android (APK)**: `Passdroid-v3.1.0-Android.apk`
-- 🪟 **Windows (Setup Installer)**: `Passdroid-v3.1.0-Setup.exe`
-- 🪟 **Windows (Standalone / Portable)**: `Passdroid-v3.1.0-Standalone.exe`
-- 🪟 **Windows (MSI Installer)**: `Passdroid-v3.1.0.msi`
+- 🤖 **Android (APK)**: `Passdroid-v3.1.1-Android.apk`
+- 🪟 **Windows (Setup Installer)**: `Passdroid-v3.1.1-Setup.exe`
+- 🪟 **Windows (Standalone / Portable)**: `Passdroid-v3.1.1-Standalone.exe`
+- 🪟 **Windows (MSI Installer)**: `Passdroid-v3.1.1.msi`
