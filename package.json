@@ -1,6 +1,6 @@
 {
   "name": "passdroid-next",
-  "version": "3.1.3",
+  "version": "3.1.4",
   "description": "Modern Tauri password vault compatible with Passdroid migration",
   "type": "module",
   "license": "GPL-3.0-or-later",
@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "preview": "vite preview",
+    "dev:preview": "vite --config vite.preview.config.ts",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
@@ -27,7 +28,9 @@
     "lucide-react": "^0.468.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",

@@ -105,12 +105,25 @@ fn push_cdata_field(sb: &mut String, tag: &str, value: &str) {
     }
     // Split any literal "]]>" so it cannot terminate the CDATA section early,
     // mirroring the original exporter's escaping.
-    let escaped = value.replace("]]>", "]]>]]><![CDATA[");
+    let escaped = strip_invalid_xml_chars(value).replace("]]>", "]]>]]><![CDATA[");
     sb.push_str(&format!("    <{tag}><![CDATA[{escaped}]]></{tag}>\n"));
 }
 
-fn escape_xml_attr(value: &str) -> String {
+/// Drop characters outside the XML 1.0 `Char` production (control characters
+/// such as U+000B or U+001B, U+FFFE, U+FFFF). They cannot be represented in
+/// XML at all, so keeping them would make the export unreadable to any parser,
+/// including `parse_xml` below.
+fn strip_invalid_xml_chars(value: &str) -> String {
     value
+        .chars()
+        .filter(|c| {
+            matches!(c, '\u{9}' | '\u{A}' | '\u{D}' | '\u{20}'..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}')
+        })
+        .collect()
+}
+
+fn escape_xml_attr(value: &str) -> String {
+    strip_invalid_xml_chars(value)
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

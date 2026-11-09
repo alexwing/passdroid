@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Copy, QrCode, ShieldCheck } from "lucide-react";
+import { Check, Copy, Info, QrCode, ShieldCheck } from "lucide-react";
 import QRCode from "qrcode";
 import { useTranslation } from "../context/LanguageContext";
 import type { SyncConfig } from "../api";
+import { Modal } from "./Modal";
 
 interface QrVaultModalProps {
   isOpen: boolean;
@@ -113,63 +114,42 @@ export function QrVaultModal({ isOpen, syncConfig, onClose }: QrVaultModalProps)
   if (!isOpen) return null;
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={handleClose}>
-      <section
-        className="modal qr-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("qrLinkDevice")}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header>
-          <h2>{t("qrLinkDevice")}</h2>
-          <button
-            className="icon-button"
-            type="button"
-            onClick={handleClose}
-            aria-label={t("close")}
-            title={t("close")}
-          >
-            <span aria-hidden>✕</span>
-          </button>
-        </header>
-
-        {/* QR Code Image */}
-        <div className="qr-image-container">
-          {qrUrl ? (
-            <img src={qrUrl} alt="QR Code" className="qr-image" />
-          ) : (
-            <div className="qr-placeholder">
-              <QrCode size={48} aria-hidden />
-            </div>
-          )}
-        </div>
-
-        {/* Info box */}
-        <div className="qr-info">
-          <h3>{t("qrHowTitle")}</h3>
-          <p>{t("qrHowBody")}</p>
-          <div className="qr-security-note">
-            <ShieldCheck size={18} aria-hidden />
-            <p>{t("qrSecurityNote")}</p>
+    <Modal title={t("qrLinkDevice")} eyebrow={t("tabSync")} onClose={handleClose} className="qr-modal">
+      {/* QR Code Image */}
+      <div className="qr-image-container">
+        {qrUrl ? (
+          <img src={qrUrl} alt={t("qrAlt")} className="qr-image" />
+        ) : (
+          <div className="qr-placeholder">
+            <QrCode size={48} aria-hidden />
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* Actions */}
-        <div className="qr-modal-actions">
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={handleCopyConfig}
-          >
-            <Copy size={16} aria-hidden />
-            {copied ? "✓" : t("qrCopyConfig")}
-          </button>
-          <button className="ghost-button" type="button" onClick={handleClose}>
-            {t("close")}
-          </button>
+      {/* Info box */}
+      <div className="qr-info">
+        <h3>
+          <Info size={16} aria-hidden />
+          {t("qrHowTitle")}
+        </h3>
+        <p>{t("qrHowBody")}</p>
+        <div className="qr-security-note">
+          <ShieldCheck size={18} aria-hidden />
+          <p>{t("qrSecurityNote")}</p>
         </div>
-      </section>
-    </div>
+      </div>
+
+      {/* Actions */}
+      <div className="qr-modal-actions">
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={handleCopyConfig}
+        >
+          {copied ? <Check size={16} aria-hidden /> : <Copy size={16} aria-hidden />}
+          {t("qrCopyConfig")}
+        </button>
+      </div>
+    </Modal>
   );
 }

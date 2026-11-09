@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Camera,
-  X,
   RefreshCw,
   Image as ImageIcon,
   AlertTriangle,
@@ -11,6 +10,7 @@ import {
 import jsQR from "jsqr";
 import { decodeQrFromImageFile, decodeQrFromClipboard } from "../utils/qrDecoder";
 import { useTranslation } from "../context/LanguageContext";
+import { Modal } from "./Modal";
 
 interface QrCameraScannerProps {
   isOpen: boolean;
@@ -275,131 +275,104 @@ export function QrCameraScanner({ isOpen, onScan, onClose, title }: QrCameraScan
   if (!isOpen) return null;
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={() => { stopCamera(); onClose(); }}>
-      <section
-        className="modal qr-scanner-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={displayTitle}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <header>
-          <div className="qr-scanner-title">
-            <Camera size={18} aria-hidden />
-            <h2>{displayTitle}</h2>
+    <Modal
+      title={displayTitle}
+      icon={<Camera size={20} aria-hidden />}
+      onClose={() => { stopCamera(); onClose(); }}
+      className="qr-scanner-modal"
+    >
+      {/* Camera Viewfinder */}
+      <div className="qr-camera">
+        <video ref={videoRef} playsInline autoPlay muted className="qr-video" />
+        <canvas ref={canvasRef} className="qr-canvas-hidden" />
+
+        {/* Loading state */}
+        {isLoading && !errorMessage && (
+          <div className="qr-status">
+            <Loader2 size={28} className="spin" aria-hidden />
+            <p>{t("qrStarting")}</p>
           </div>
-          <button
-            className="icon-button"
-            type="button"
-            onClick={() => { stopCamera(); onClose(); }}
-            aria-label={t("close")}
-            title={t("close")}
-          >
-            <X size={18} aria-hidden />
-          </button>
-        </header>
+        )}
 
-        {/* Camera Viewfinder */}
-        <div className="qr-camera">
-          <video ref={videoRef} playsInline autoPlay muted className="qr-video" />
-          <canvas ref={canvasRef} className="qr-canvas-hidden" />
+        {/* Processing image state */}
+        {isProcessingFile && (
+          <div className="qr-status">
+            <Loader2 size={28} className="spin" aria-hidden />
+            <p>{t("qrAnalyzing")}</p>
+          </div>
+        )}
 
-          {/* Loading state */}
-          {isLoading && !errorMessage && (
-            <div className="qr-status">
-              <Loader2 size={28} className="spin" aria-hidden />
-              <p>{t("qrStarting")}</p>
+        {/* Error */}
+        {errorMessage && (
+          <div className="qr-status qr-error">
+            <AlertTriangle size={24} aria-hidden />
+            <p>{errorMessage}</p>
+            <div className="qr-error-actions">
+              <button className="secondary-button" type="button" onClick={() => void startCamera()}>
+                {t("qrRetry")}
+              </button>
+              <button className="primary-button" type="button" onClick={() => fileInputRef.current?.click()}>
+                {t("qrUploadImage")}
+              </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Processing image state */}
-          {isProcessingFile && (
-            <div className="qr-status">
-              <Loader2 size={28} className="spin" aria-hidden />
-              <p>{t("qrAnalyzing")}</p>
+        {/* Overlay with corner brackets */}
+        {!errorMessage && !isLoading && (
+          <div className="qr-overlay">
+            <div className="qr-frame">
+              <div className="qr-corner tl" />
+              <div className="qr-corner tr" />
+              <div className="qr-corner bl" />
+              <div className="qr-corner br" />
+              <div className="qr-laser" />
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Error */}
-          {errorMessage && (
-            <div className="qr-status qr-error">
-              <AlertTriangle size={24} aria-hidden />
-              <p>{errorMessage}</p>
-              <div className="qr-error-actions">
-                <button className="secondary-button" type="button" onClick={() => void startCamera()}>
-                  {t("qrRetry")}
-                </button>
-                <button className="primary-button" type="button" onClick={() => fileInputRef.current?.click()}>
-                  {t("qrUploadImage")}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Overlay with corner brackets */}
-          {!errorMessage && !isLoading && (
-            <div className="qr-overlay">
-              <div className="qr-frame">
-                <div className="qr-corner tl" />
-                <div className="qr-corner tr" />
-                <div className="qr-corner bl" />
-                <div className="qr-corner br" />
-                <div className="qr-laser" />
-              </div>
-            </div>
-          )}
-
-          {/* Camera Switcher */}
-          {(availableCameras.length > 1 || !errorMessage) && (
-            <button
-              className="icon-button qr-switch"
-              type="button"
-              onClick={handleSwitchCamera}
-              title={t("qrSwitchCamera")}
-              aria-label={t("qrSwitchCamera")}
-            >
-              <RefreshCw size={16} aria-hidden />
-            </button>
-          )}
-        </div>
-
-        {/* Bottom Actions */}
-        <div className="qr-actions">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="qr-canvas-hidden"
-            onChange={handleFileChange}
-          />
+        {/* Camera Switcher */}
+        {(availableCameras.length > 1 || !errorMessage) && (
           <button
-            className="secondary-button"
+            className="icon-button qr-switch"
             type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isProcessingFile}
+            onClick={handleSwitchCamera}
+            title={t("qrSwitchCamera")}
+            aria-label={t("qrSwitchCamera")}
           >
-            <ImageIcon size={16} aria-hidden />
-            {t("qrUploadImage")}
+            <RefreshCw size={16} aria-hidden />
           </button>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={handlePasteClipboard}
-            disabled={isProcessingFile}
-          >
-            <ClipboardPaste size={16} aria-hidden />
-            {t("qrPasteClipboard")}
-          </button>
-          <button
-            className="ghost-button"
-            type="button"
-            onClick={() => { stopCamera(); onClose(); }}
-          >
-            {t("cancel")}
-          </button>
-        </div>
-      </section>
-    </div>
+        )}
+      </div>
+
+      {/* Bottom Actions */}
+      <div className="qr-actions">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="qr-canvas-hidden"
+          onChange={handleFileChange}
+        />
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isProcessingFile}
+        >
+          <ImageIcon size={16} aria-hidden />
+          {t("qrUploadImage")}
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={handlePasteClipboard}
+          disabled={isProcessingFile}
+        >
+          <ClipboardPaste size={16} aria-hidden />
+          {t("qrPasteClipboard")}
+        </button>
+      </div>
+    </Modal>
   );
 }

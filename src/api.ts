@@ -1,6 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { LanguagePreference, ThemePreference } from "./i18n";
 
+export type ExportKind = "vault" | "xml";
+
+export interface SavedExport {
+  name: string;
+  path: string;
+}
+
 export interface VaultEntry {
   id: string;
   title: string;
@@ -31,11 +38,15 @@ export interface EntriesSnapshot {
   contents: string;
 }
 
+export type NotesView = "edit" | "preview";
+
 export interface Preferences {
   theme: ThemePreference;
   language: LanguagePreference;
   recentVaults: string[];
   vaultIcons: Record<string, string>;
+  railCollapsed: boolean;
+  notesView: NotesView;
 }
 
 export interface GeneratePasswordOptions {
@@ -110,6 +121,10 @@ const Api = {
   saveVault: () => invoke<VaultSnapshot>("save_vault"),
   exportVaultCopy: () => invoke<string>("export_vault_copy"),
   exportLegacyXml: () => invoke<string>("export_legacy_xml"),
+  verifyExport: (kind: ExportKind, contents: string) =>
+    invoke<void>("verify_export", { kind, contents }),
+  exportSaveAndroid: (kind: ExportKind, contents: string) =>
+    invoke<SavedExport>("export_save_android", { kind, contents }),
   setVaultIcon: (icon: string) => invoke<VaultSnapshot>("set_vault_icon", { icon }),
   getSyncConfig: () => invoke<SyncConfig | null>("get_sync_config"),
   setSyncConfig: (config: SyncConfig) => invoke<VaultSnapshot>("set_sync_config", { config }),

@@ -18,7 +18,11 @@ private storage and syncs across devices over the built-in FTP sync.
 ## Features
 
 - **Vault management** — create, unlock and lock vaults; add / edit / delete entries (title,
-  username, password, URL, notes) with instant search.
+  username, password, URL, notes) with instant search. Deleting an entry asks for confirmation.
+- **Markdown notes** — the notes field switches between *Write* and *Preview* (tables, task lists,
+  code). The chosen view is remembered for every entry. Rendering is hardened for a password
+  manager: raw HTML is shown as text, links are limited to http/https/mailto and open in the system
+  browser (the real host is shown when the link text differs), and remote images are never loaded.
 - **QR Vault Linking (Zero-Knowledge)** — quickly connect another phone or desktop by generating
   and scanning an FTP configuration QR code (`pdvault://`). Includes a native camera scanner,
   fallback photo/image upload, and clipboard paste. The master password is **never** included
@@ -34,13 +38,16 @@ private storage and syncs across devices over the built-in FTP sync.
 - **Recent vaults** — re-open quickly from the start screen (shown by name).
 - **Import** — migrate from the original Passdroid app (cleartext XML, encrypted `sqt`, or a
   `password.db` SQLite database).
-- **Export** — an encrypted `.pdvault` copy, or a legacy-compatible (unencrypted) XML.
+- **Export** — an encrypted `.pdvault` copy, or a legacy-compatible (unencrypted) XML. On Android
+  it is saved to `Download/Passdroid/` (no picker); every export is read back and verified before
+  reporting success.
 - **Security hardening** — screenshots / screen-recording are blocked and the recents thumbnail is
   blanked (Android `FLAG_SECURE`); the vault auto-locks when the app goes to the background and
   asks for that vault's master password again on return.
-- **UX & Localization** — live light / dark / system theme switching synchronized with OS settings,
-  full English and Spanish internationalization with auto-detection, copy username & password,
-  open URLs in default browser, and responsive mobile layout with full-screen editor.
+- **UX & Localization** — navy & amber design with light / dark / system themes, a custom title bar
+  on desktop, a collapsible side rail (icons only), a bottom bar with floating action button on
+  mobile, full English and Spanish internationalization with auto-detection, copy username &
+  password, and open URLs in the default browser.
 
 ## Downloads & Releases
 

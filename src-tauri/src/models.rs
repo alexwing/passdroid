@@ -99,6 +99,16 @@ pub struct Preferences {
     /// inside the vault so the icon can be shown while the vault is still locked.
     #[serde(default)]
     pub vault_icons: HashMap<String, String>,
+    /// Desktop left rail shown as an icon-only column.
+    #[serde(default)]
+    pub rail_collapsed: bool,
+    /// Last chosen view of the entry notes: "edit" or "preview" (default for every entry).
+    #[serde(default = "default_notes_view")]
+    pub notes_view: String,
+}
+
+fn default_notes_view() -> String {
+    "edit".to_string()
 }
 
 impl Default for Preferences {
@@ -108,6 +118,8 @@ impl Default for Preferences {
             language: "system".to_string(),
             recent_vaults: Vec::new(),
             vault_icons: HashMap::new(),
+            rail_collapsed: false,
+            notes_view: default_notes_view(),
         }
     }
 }

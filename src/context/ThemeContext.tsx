@@ -35,7 +35,9 @@ const applyTheme = (dark: boolean) => {
     document.documentElement.setAttribute("data-theme", "dark");
     document.documentElement.classList.add("dark");
   } else {
-    document.documentElement.removeAttribute("data-theme");
+    // Explicit "light" (not attribute removal): CSS falls back to the OS
+    // preference only while data-theme is unset, so a chosen light theme must win.
+    document.documentElement.setAttribute("data-theme", "light");
     document.documentElement.classList.remove("dark");
   }
 };
