@@ -1,6 +1,29 @@
-# Passdroid v3.1.2
+# Passdroid v3.1.3
 
-## 🚀 What's New in v3.1.2
+## 🚀 What's New in v3.1.3
+
+### 🔒 FTPS Sync with Certificate Validation
+- **Encrypted transport**: sync now supports explicit FTPS (AUTH TLS on port 21) using `rustls` (no OpenSSL on Android). The server certificate is validated against the public Mozilla roots **and the configured host name**, and the data channel is encrypted as well (`PROT P`). There is no "accept any certificate" mode.
+- **Protocol selector**: Settings → *Sync* offers **FTPS (recommended)** or **FTP (unencrypted)**. New configs and new QR links default to FTPS. Existing configs keep their current protocol until you switch them, so legacy servers without TLS keep working.
+- **Clear errors**: TLS/certificate problems now report a dedicated error instead of a generic connection failure. Connect by host name: an IP address will not match the certificate.
+
+### 🛡️ Safer Sync Writes
+- **Atomic uploads**: the vault is uploaded to a temporary `.<file>.<random>.part`, its size is verified, and only then is it renamed over the remote vault. A broken or truncated transfer can no longer replace a good vault.
+- **No blind overwrites**: removed the old directory-listing check that treated *any* listing error as "no remote vault". Now only a definite "file not found" (550) means there is no remote copy; any other server error aborts the sync instead of uploading over a newer remote. The same rule applies when entering the remote folder.
+- **No more hangs**: existence is checked on the control channel before any transfer, and all FTP sockets have timeouts (15 s connect, 30 s I/O). Previously, over FTPS, a sync against a missing remote file could freeze until the server's idle timeout.
+- **Binary mode**: transfers now explicitly use `TYPE I`, so no server can apply ASCII conversions to the vault.
+
+### 📲 QR Linking
+- QR links carry the sync protocol, so an FTPS setup links as FTPS.
+- Fixed QR generation failing silently when the FTP password (or any field) contains characters outside Latin-1 (e.g. `€` or emoji). Older QR codes still scan.
+- As before, the QR includes the FTP login (by design) but **never** the master password: treat the QR as a secret.
+
+> [!IMPORTANT]
+> **Update every device before enforcing TLS on your server.** Builds before v3.1.3 ignore the protocol field and always use plain FTP, so they will fail to sync once the server requires TLS. After updating, switch each device to **FTPS** in Settings → *Sync* and re-generate the QR. Updating from v3.1.2 installs directly over it.
+
+---
+
+## 📦 Prior v3.1.2 Highlights
 
 ### 🔑 Official Android Keystore & Seamless APK Updates
 - **Permanent Release Certificate Signing**: Configured CI release pipeline with the official Passdroid release keystore (`passdroid-release.jks`). Prevents certificate mismatch (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`) so future Android updates install directly over existing versions without having to uninstall.
@@ -52,7 +75,7 @@
 ---
 
 ### 📦 Available Downloads:
-- 🤖 **Android (APK)**: `Passdroid-v3.1.2-Android.apk`
-- 🪟 **Windows (Setup Installer)**: `Passdroid-v3.1.2-Setup.exe`
-- 🪟 **Windows (Standalone / Portable)**: `Passdroid-v3.1.2-Standalone.exe`
-- 🪟 **Windows (MSI Installer)**: `Passdroid-v3.1.2.msi`
+- 🤖 **Android (APK)**: `Passdroid-v3.1.3-Android.apk`
+- 🪟 **Windows (Setup Installer)**: `Passdroid-v3.1.3-Setup.exe`
+- 🪟 **Windows (Standalone / Portable)**: `Passdroid-v3.1.3-Standalone.exe`
+- 🪟 **Windows (MSI Installer)**: `Passdroid-v3.1.3.msi`

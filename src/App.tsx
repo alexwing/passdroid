@@ -95,7 +95,7 @@ const DEFAULT_VAULT_ICON = "safe";
 
 const defaultSync: SyncConfig = {
   enabled: false,
-  protocol: "ftp",
+  protocol: "ftps",
   host: "",
   port: 21,
   username: "",
@@ -1189,7 +1189,15 @@ function App() {
           {settingsTab === "sync" && (
             <section className="stack-form">
               <h3>{t("sync")}</h3>
-              <p className="sync-warning">{t("syncPlainWarning")}</p>
+              <Segmented
+                value={syncForm.protocol === "ftps" ? "ftps" : "ftp"}
+                options={[
+                  { value: "ftps", label: t("syncProtocolFtps"), icon: <span aria-hidden>🔒</span> },
+                  { value: "ftp", label: t("syncProtocolFtp"), icon: <span aria-hidden>🔓</span> },
+                ]}
+                onChange={(protocol) => setSyncForm({ ...syncForm, protocol })}
+              />
+              {syncForm.protocol !== "ftps" && <p className="sync-warning">{t("syncPlainWarning")}</p>}
               <Toggle
                 label={t("syncEnabled")}
                 checked={syncForm.enabled}

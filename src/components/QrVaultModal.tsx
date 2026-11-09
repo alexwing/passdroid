@@ -21,6 +21,21 @@ interface QrPayload {
   remoteFile: string;
 }
 
+// UTF-8-safe base64: plain btoa() throws on any character outside Latin-1
+// (e.g. "€" or an emoji in the FTP password), which made the QR silently fail.
+// ASCII payloads encode to exactly the same string as before, so old QR codes
+// still parse.
+function toBase64Utf8(text: string): string {
+  let binary = "";
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function fromBase64Utf8(b64: string): string {
+  const binary = atob(b64);
+  return new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
+}
+
 export function encodeQrPayload(config: SyncConfig): string {
   const payload: QrPayload = {
     type: "passdroid-vault-link",
@@ -32,19 +47,20 @@ export function encodeQrPayload(config: SyncConfig): string {
     remoteDir: config.remoteDir,
     remoteFile: config.remoteFile,
   };
-  return `pdvault://${btoa(JSON.stringify(payload))}`;
+  return `pdvault://${toBase64Utf8(JSON.stringify(payload))}`;
 }
 
 export function parseQrPayload(text: string): SyncConfig | null {
   try {
     let jsonStr = text.trim();
     if (jsonStr.startsWith("pdvault://")) {
-      jsonStr = atob(jsonStr.replace("pdvault://", ""));
+      jsonStr = fromBase64Utf8(jsonStr.replace("pdvault://", ""));
     }
     const data = JSON.parse(jsonStr);
     if (data.type !== "passdroid-vault-link" || !data.host) return null;
     return {
       enabled: true,
+      // Payloads from before the protocol field was carried were plain FTP.
       protocol: data.protocol || "ftp",
       host: data.host,
       port: data.port || 21,

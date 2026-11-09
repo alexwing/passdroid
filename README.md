@@ -22,9 +22,10 @@ private storage and syncs across devices over the built-in FTP sync.
 - **QR Vault Linking (Zero-Knowledge)** — quickly connect another phone or desktop by generating
   and scanning an FTP configuration QR code (`pdvault://`). Includes a native camera scanner,
   fallback photo/image upload, and clipboard paste. The master password is **never** included
-  in the QR payload.
-- **Remote sync over FTP** — optional. On open, if the server copy is newer it offers to download
-  and merge it; after each change it pushes, merging by `id` / `updated_at` (see *Remote sync*).
+  in the QR payload (the FTP login is, so treat the QR as a secret).
+- **Remote sync over FTPS** — optional, with certificate validation (plain FTP only as an explicit
+  legacy option). On open, if the server copy is newer it offers to download and merge it; after
+  each change it pushes atomically (temp file + rename), merging by `id` / `updated_at`.
 - **Tabbed Settings** — organized into *General* (appearance, language, vault icon), *Sync*
   (FTP server setup, testing, manual sync, and QR device link), and *Security* (master password change).
 - **Per-vault icon** — choose an icon from a curated set; it is stored inside the vault (so it
@@ -136,14 +137,24 @@ The vault is a single encrypted file, so it syncs as a blob.
   after every change it pushes the merged result, reconciling by `id` / `updated_at`. On upload it
   also drops a deny-all `.htaccess` next to the vault so the folder is never served over the web.
 
-  > Plain FTP transmits the login in clear text — the vault *content* stays encrypted
-  > (XChaCha20-Poly1305), but use a **dedicated, least-privilege FTP account**. FTPS/SFTP is a
-  > planned hardening step.
+  - **FTPS by default** (explicit TLS on port 21, `rustls`): the server certificate is validated
+    against the public roots and the configured host name, and the data channel is encrypted too
+    (`PROT P`). Connect by host name, not IP. Plain *FTP* remains selectable for legacy servers and
+    is flagged as unencrypted; existing configs keep their protocol until you switch it.
+  - **Safe writes**: uploads go to a temporary `.<file>.<random>.part`, are size-checked, and only
+    then renamed over the vault, so a broken transfer never replaces it with a truncated file.
+  - **No blind overwrites**: only a definite "file not found" (550) counts as "no remote vault";
+    any other server error aborts the sync instead of uploading over a newer remote.
+  - Connections time out (15 s connect, 30 s I/O) instead of hanging.
+
+  > Use a **dedicated, least-privilege FTP account**, and on your own server enforce TLS
+  > (e.g. vsftpd `force_local_logins_ssl=YES` and `force_local_data_ssl=YES`).
 
 - **QR Device Linking** (Settings → *Sync* → *Link another device*): generate a QR code with the
   FTP parameters (`pdvault://`). On a second phone or desktop, click **Link via QR** on the start
   screen, scan it with the camera (or upload an image / paste clipboard), enter your master password,
-  and the app pulls the vault and unlocks it immediately. The master password **never** travels in the QR code.
+  and the app pulls the vault and unlocks it immediately. The master password **never** travels in the QR code;
+  the FTP login (including its password) does, by design, so show the QR only to your own devices.
 
 - **On Android** the vault lives in the app's private storage (a real, always-accessible path —
   Android revokes Storage-Access-Framework permissions on restart, so a picked Documents/Drive
