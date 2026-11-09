@@ -16,7 +16,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { deepStrictEqual, strictEqual, notStrictEqual } from 'node:assert';
+import { deepStrictEqual, strictEqual, notStrictEqual, ok } from 'node:assert';
+import { randomBytes } from 'node:crypto';
 
 const PASSWORD = 'phase0-golden-vectors';
 const WRONG_PASSWORD = 'not-the-password';
@@ -182,6 +183,211 @@ check('generate_password(24, all classes) length and type', () => {
   const pw = api.generate_password(24, true, true, true, true);
   strictEqual(typeof pw, 'string');
   strictEqual(pw.length, 24);
+});
+
+// ---------------------------------------------------------------------------
+// Worker API: split open/seal around a derived key, plus the session ops on JSON.
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const T_OLD = '2026-11-09T10:00:00.000Z';
+const T_NEW = '2026-11-09T11:00:00.000Z';
+
+const newEntry = (id, title, updatedAt) => ({
+  id,
+  title,
+  username: '',
+  password: '',
+  url: '',
+  notes: '',
+  createdAt: T_OLD,
+  updatedAt,
+  deletedAt: null,
+  conflict: false,
+});
+
+for (const f of FIXTURES) {
+  const prefix = f.label;
+  const vault = readFixture(f.vault);
+  const expected = JSON.parse(readFixture(f.expected));
+  const envelopeHeaderJson = api.parseHeader(vault);
+  const header = JSON.parse(envelopeHeaderJson);
+  const kdfJson = JSON.stringify(header.kdf);
+  let key = null;
+  let openedText = null;
+
+  check(`${prefix}: [worker] parseHeader == read_header`, () => {
+    strictEqual(envelopeHeaderJson, api.read_header(vault));
+  });
+
+  check(`${prefix}: [worker] checkKdfBounds accepts fixture KDF, rejects memoryKib 1024`, () => {
+    api.checkKdfBounds(kdfJson);
+    const manipulated = JSON.stringify({ ...header.kdf, memoryKib: 1024 });
+    strictEqual(errorCodeOf(() => api.checkKdfBounds(manipulated)), 'kdf_out_of_bounds');
+  });
+
+  check(`${prefix}: [worker] deriveKey -> 32-byte Uint8Array`, () => {
+    key = api.deriveKey(PASSWORD, kdfJson);
+    ok(key instanceof Uint8Array, 'not a Uint8Array');
+    strictEqual(key.length, 32);
+  });
+
+  check(`${prefix}: [worker] deriveKey rejects out-of-bounds KDF without deriving`, () => {
+    const lowMemory = JSON.stringify({ ...header.kdf, memoryKib: 1024 });
+    strictEqual(errorCodeOf(() => api.deriveKey(PASSWORD, lowMemory)), 'kdf_out_of_bounds');
+    // Heavy params that would take seconds to derive: the bounds check must
+    // answer before Argon2 runs, so the call is effectively instant.
+    const heavy = JSON.stringify({ ...header.kdf, memoryKib: 131072, iterations: 11 });
+    const started = performance.now();
+    strictEqual(errorCodeOf(() => api.deriveKey(PASSWORD, heavy)), 'kdf_out_of_bounds');
+    const ms = performance.now() - started;
+    ok(ms < 1000, `took ${Math.round(ms)} ms`);
+    return `fast-fail ${Math.round(ms)}ms`;
+  });
+
+  check(`${prefix}: [worker] openWithKey == open_vault JSON == expected`, () => {
+    openedText = api.openWithKey(vault, key);
+    strictEqual(openedText, api.open_vault(vault, PASSWORD));
+    deepStrictEqual(JSON.parse(openedText), expected);
+  });
+
+  check(`${prefix}: [worker] openWithKey: random 32-byte key -> master_password_incorrect`, () => {
+    const wrong = new Uint8Array(randomBytes(32));
+    strictEqual(errorCodeOf(() => api.openWithKey(vault, wrong)), 'master_password_incorrect');
+  });
+
+  check(`${prefix}: [worker] openWithKey: 31-byte key -> invalid_key`, () => {
+    strictEqual(errorCodeOf(() => api.openWithKey(vault, new Uint8Array(31))), 'invalid_key');
+  });
+
+  check(`${prefix}: [worker] sealWithKey(bump=true): revision+1, fresh nonce, reopens with key`, () => {
+    const sealed = api.sealWithKey(envelopeHeaderJson, openedText, key, true);
+    const reopened = JSON.parse(api.openWithKey(sealed, key));
+    deepStrictEqual(reopened, { ...expected, revision: expected.revision + 1 });
+
+    const after = JSON.parse(api.parseHeader(sealed));
+    notStrictEqual(after.nonce, header.nonce);
+    notStrictEqual(after.updatedAt, header.updatedAt);
+    strictEqual(after.vaultId, header.vaultId);
+    strictEqual(after.kdf.salt, header.kdf.salt);
+    if (!isStablePretty(sealed)) {
+      throw new Error('sealed envelope is not stable pretty JSON');
+    }
+  });
+
+  check(`${prefix}: [worker] sealWithKey(bump=false): revision unchanged, fresh nonce`, () => {
+    const sealed = api.sealWithKey(envelopeHeaderJson, openedText, key, false);
+    deepStrictEqual(JSON.parse(api.openWithKey(sealed, key)), expected);
+    notStrictEqual(JSON.parse(api.parseHeader(sealed)).nonce, header.nonce);
+  });
+
+  check(`${prefix}: [worker] sealWithKey: 31-byte key -> invalid_key`, () => {
+    const short = new Uint8Array(31);
+    strictEqual(errorCodeOf(() => api.sealWithKey(envelopeHeaderJson, openedText, short, true)), 'invalid_key');
+  });
+
+  check(`${prefix}: [worker] VaultData unknown field survives open->upsert->seal->open`, () => {
+    const withFuture = { ...expected, futureField: { a: 1 } };
+    const env0 = api.sealWithKey(envelopeHeaderJson, JSON.stringify(withFuture), key, false);
+    const data1 = api.openWithKey(env0, key);
+    const upserted = JSON.parse(api.upsertEntry(data1, JSON.stringify({ title: 'Future test' })));
+    const env1 = api.sealWithKey(api.parseHeader(env0), JSON.stringify(upserted.data), key, true);
+    const data2 = JSON.parse(api.openWithKey(env1, key));
+    deepStrictEqual(data2.futureField, { a: 1 });
+    strictEqual(data2.revision, expected.revision + 1);
+    strictEqual(data2.entries.length, expected.entries.length + 1);
+  });
+
+  check(`${prefix}: [worker] upsertEntry new: id generated, timestamps set, title trimmed`, () => {
+    const res = JSON.parse(api.upsertEntry(openedText, JSON.stringify({ title: '  Nuevo  ', username: 'u', password: 'p' })));
+    ok(UUID_RE.test(res.id), `id ${res.id}`);
+    const added = res.data.entries.find((e) => e.id === res.id);
+    strictEqual(added.title, 'Nuevo');
+    strictEqual(added.username, 'u');
+    ok(added.createdAt && added.createdAt === added.updatedAt, 'timestamps');
+    strictEqual(res.data.entries.length, expected.entries.length + 1);
+    strictEqual(res.data.revision, expected.revision);
+  });
+
+  check(`${prefix}: [worker] upsertEntry edit keeps unknown field "favorite"`, () => {
+    const live = JSON.parse(openedText).entries.find((e) => e.deletedAt == null);
+    // Edit with the unknown field present in the incoming JSON.
+    const first = JSON.parse(api.upsertEntry(openedText, JSON.stringify({ ...live, favorite: true, title: 'Edited once' })));
+    const stored = first.data.entries.find((e) => e.id === live.id);
+    strictEqual(stored.favorite, true);
+    strictEqual(stored.title, 'Edited once');
+    strictEqual(stored.createdAt, live.createdAt);
+    // Edit from a client that does not know the field: it must survive.
+    const { favorite, ...withoutFavorite } = stored;
+    const second = JSON.parse(api.upsertEntry(JSON.stringify(first.data), JSON.stringify({ ...withoutFavorite, title: 'Edited twice' })));
+    const again = second.data.entries.find((e) => e.id === live.id);
+    strictEqual(again.favorite, true);
+    strictEqual(again.title, 'Edited twice');
+    strictEqual(second.data.entries.length, expected.entries.length);
+  });
+
+  check(`${prefix}: [worker] upsertEntry blank title -> entry_title_required`, () => {
+    strictEqual(errorCodeOf(() => api.upsertEntry(openedText, JSON.stringify({ title: '   ' }))), 'entry_title_required');
+  });
+
+  check(`${prefix}: [worker] deleteEntry -> tombstone, hidden from visibleEntries`, () => {
+    const target = JSON.parse(openedText).entries.find((e) => e.deletedAt == null);
+    const visibleBefore = JSON.parse(api.visibleEntries(openedText));
+    const res = JSON.parse(api.deleteEntry(openedText, target.id));
+    strictEqual(res.existed, true);
+    const tomb = res.data.entries.find((e) => e.id === target.id);
+    ok(tomb && tomb.deletedAt, 'tombstone kept in data');
+    strictEqual(res.data.entries.length, expected.entries.length);
+    const visibleAfter = JSON.parse(api.visibleEntries(JSON.stringify(res.data)));
+    strictEqual(visibleAfter.length, visibleBefore.length - 1);
+    ok(!visibleAfter.some((e) => e.id === target.id), 'tombstone still visible');
+    strictEqual(JSON.parse(api.deleteEntry(openedText, 'no-such-id')).existed, false);
+  });
+
+  check(`${prefix}: [worker] visibleEntries == live entries of expected`, () => {
+    const live = expected.entries.filter((e) => e.deletedAt == null);
+    const visible = JSON.parse(api.visibleEntries(openedText));
+    strictEqual(visible.length, live.length);
+    ok(visible.every((e) => e.deletedAt == null));
+    return `visible=${visible.length}`;
+  });
+
+  check(`${prefix}: [worker] mergeSession: parallel additions with empty base`, () => {
+    const remote = { revision: 5, deviceId: 'remote-dev', entries: [newEntry('remote-add', 'Remote add', T_NEW)], settings: { icon: 'remote' }, extra: {} };
+    const local = { revision: 4, deviceId: 'local-dev', entries: [newEntry('local-add', 'Local add', T_NEW)], settings: { icon: 'local' } };
+    const merged = JSON.parse(api.mergeSession('[]', JSON.stringify(remote), JSON.stringify(local), false));
+    const ids = merged.entries.map((e) => e.id).sort();
+    deepStrictEqual(ids, ['local-add', 'remote-add']);
+    strictEqual(merged.revision, 5);
+    deepStrictEqual(merged.settings, { icon: 'remote' });
+    const dirty = JSON.parse(api.mergeSession('[]', JSON.stringify(remote), JSON.stringify(local), true));
+    deepStrictEqual(dirty.settings, { icon: 'local' });
+  });
+
+  check(`${prefix}: [worker] mergeSession: parallel additions over the fixture base`, () => {
+    const remote = { ...expected, revision: expected.revision + 1, entries: [...expected.entries, newEntry('remote-add', 'Remote add', T_NEW)] };
+    const local = { ...expected, entries: [...expected.entries, newEntry('local-add', 'Local add', T_NEW)] };
+    const merged = JSON.parse(api.mergeSession(JSON.stringify(expected.entries), JSON.stringify(remote), JSON.stringify(local), false));
+    strictEqual(merged.entries.length, expected.entries.length + 2);
+    ok(merged.entries.some((e) => e.id === 'remote-add'), 'remote add missing');
+    ok(merged.entries.some((e) => e.id === 'local-add'), 'local add missing');
+    strictEqual(merged.revision, expected.revision + 1);
+  });
+}
+
+check('checkRollback: remote_rollback / invalid_revision / ok cases', () => {
+  strictEqual(errorCodeOf(() => api.checkRollback(5, 6, undefined)), 'remote_rollback');
+  strictEqual(errorCodeOf(() => api.checkRollback(6, 6, 7)), 'remote_rollback');
+  strictEqual(api.checkRollback(7, 6, 7), undefined);
+  strictEqual(api.checkRollback(6, 6, null), undefined);
+  strictEqual(errorCodeOf(() => api.checkRollback(-1, 0, undefined)), 'invalid_revision');
+  strictEqual(errorCodeOf(() => api.checkRollback(1.5, 0, undefined)), 'invalid_revision');
+  strictEqual(errorCodeOf(() => api.checkRollback(1, 0, -3)), 'invalid_revision');
+  strictEqual(errorCodeOf(() => api.checkRollback(NaN, 0, undefined)), 'invalid_revision');
+});
+
+check('parseHeader: malformed envelope -> vault_file_invalid', () => {
+  strictEqual(errorCodeOf(() => api.parseHeader('{not json')), 'vault_file_invalid');
+  strictEqual(errorCodeOf(() => api.parseHeader('{}')), 'vault_file_invalid');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
