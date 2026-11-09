@@ -10,6 +10,7 @@ pub mod envelope;
 pub mod merge;
 pub mod models;
 pub mod password;
+pub mod session;
 
 pub use crypto::{
     decode_b64, default_cipher_info, default_kdf_params, derive_key, encode_b64, now_iso,
@@ -28,3 +29,4 @@ pub use models::{
     VaultHeader, VaultStatus,
 };
 pub use password::generate_password;
+pub use session::{apply_delete, apply_upsert, check_rollback, merge_session};

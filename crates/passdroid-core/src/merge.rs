@@ -92,6 +92,7 @@ mod tests {
             updated_at: updated_at.to_string(),
             deleted_at: None,
             conflict: false,
+            extra: Default::default(),
         }
     }
 

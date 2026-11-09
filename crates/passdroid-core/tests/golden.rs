@@ -9,10 +9,14 @@
 
 use std::{fs, path::PathBuf};
 
+use chacha20poly1305::{
+    aead::{Aead, KeyInit, Payload},
+    XChaCha20Poly1305,
+};
 use passdroid_core::{
     change_password, check_kdf_bounds, decode_b64, derive_key, encode_b64, open_envelope,
     open_envelope_with_key, parse_envelope, reseal_envelope, seal_envelope, vault_status,
-    visible_entries, VaultEnvelope, VAULT_MAGIC,
+    visible_entries, VaultData, VaultEnvelope, VAULT_MAGIC,
 };
 
 const TEST_PASSWORD: &str = "phase0-golden-vectors";
@@ -20,6 +24,34 @@ const TEST_PASSWORD: &str = "phase0-golden-vectors";
 fn read_fixture(name: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/golden").join(name);
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()))
+}
+
+/// Decrypt the payload to the exact cleartext bytes that were sealed. Same
+/// cipher and AAD (the serialized header) as `crypto::open_payload`, but the
+/// public API only returns the deserialized `VaultData`, not the bytes.
+fn decrypt_payload_bytes(envelope: &VaultEnvelope, key: &[u8]) -> Vec<u8> {
+    let nonce = decode_b64(&envelope.header.nonce).unwrap();
+    let aad = serde_json::to_vec(&envelope.header).unwrap();
+    let encrypted = decode_b64(&envelope.payload).unwrap();
+    XChaCha20Poly1305::new_from_slice(key)
+        .unwrap()
+        .decrypt(nonce.as_slice().into(), Payload { msg: &encrypted, aad: &aad })
+        .expect("golden payload must decrypt with its own key and header")
+}
+
+/// The format did not change: parsing the golden cleartext into `VaultData` and
+/// serializing it back yields the same bytes that were sealed.
+#[test]
+fn golden_plaintext_reserializes_byte_for_byte() {
+    for file in ["desktop-64mib.pdvault", "android-32mib.pdvault", "android-real-32mib.pdvault"] {
+        let envelope = parse_envelope(&read_fixture(file)).unwrap();
+        let key = derive_key(TEST_PASSWORD, &envelope.header.kdf).unwrap();
+        let plaintext = decrypt_payload_bytes(&envelope, &key[..]);
+        assert!(!plaintext.is_empty(), "{file}");
+
+        let data: VaultData = serde_json::from_slice(&plaintext).unwrap();
+        assert_eq!(serde_json::to_vec(&data).unwrap(), plaintext, "{file}");
+    }
 }
 
 fn check_fixture(file: &str, expected_file: &str, memory_kib: u32) {

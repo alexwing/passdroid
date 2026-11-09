@@ -144,6 +144,7 @@ pub fn new_vault_data() -> VaultData {
         device_id: Uuid::new_v4().to_string(),
         entries: Vec::new(),
         settings: serde_json::json!({}),
+        extra: Default::default(),
     }
 }
 
@@ -223,6 +224,7 @@ pub fn vault_status(header: &VaultHeader, data: &VaultData) -> VaultStatus {
 mod tests {
     use super::*;
     use crate::crypto::encode_b64;
+    use crate::models::VaultEntry;
 
     /// A KDF parameter set that passes every check.
     fn valid_kdf() -> KdfParams {
@@ -284,6 +286,33 @@ mod tests {
         assert_rejected(&KdfParams { output_len: 31, ..valid_kdf() });
         assert_rejected(&KdfParams { output_len: 64, ..valid_kdf() });
         assert_rejected(&KdfParams { algorithm: "Argon2i".to_string(), ..valid_kdf() });
+    }
+
+    #[test]
+    fn unknown_fields_survive_seal_and_open() {
+        let kdf = valid_kdf();
+        let key = derive_key("pw-with-extras", &kdf).unwrap();
+        let mut header = new_header(kdf);
+        let mut entry = VaultEntry::imported(
+            "Mail".to_string(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+        );
+        entry.id = "1".to_string();
+        entry.extra.insert("favorite".to_string(), serde_json::json!(true));
+        entry.extra.insert("tags".to_string(), serde_json::json!(["x"]));
+        let mut data = new_vault_data();
+        data.entries.push(entry);
+        data.extra.insert("futureField".to_string(), serde_json::json!({"a": 1}));
+
+        let sealed = seal_envelope(&mut header, &mut data, &key[..]).unwrap();
+        let opened = open_envelope(&sealed, "pw-with-extras").unwrap();
+        assert_eq!(opened.data.entries[0].extra, data.entries[0].extra);
+        assert_eq!(opened.data.extra, data.extra);
+        assert_eq!(opened.data.entries[0].extra["favorite"], true);
+        assert_eq!(opened.data.extra["futureField"], serde_json::json!({"a": 1}));
     }
 
     #[test]

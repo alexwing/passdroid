@@ -23,6 +23,10 @@ pub struct VaultEntry {
     pub deleted_at: Option<String>,
     #[serde(default)]
     pub conflict: bool,
+    /// Fields this build does not know (written by a newer client). Kept as they
+    /// were read so saving from an older client does not drop them.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 impl VaultEntry {
@@ -38,6 +42,7 @@ impl VaultEntry {
             updated_at: String::new(),
             deleted_at: None,
             conflict: false,
+            extra: Default::default(),
         }
     }
 }
@@ -53,6 +58,10 @@ pub struct VaultData {
     pub entries: Vec<VaultEntry>,
     #[serde(default = "empty_settings")]
     pub settings: serde_json::Value,
+    /// Top-level fields this build does not know; see `VaultEntry::extra`.
+    /// `VaultHeader` deliberately has none: its JSON is the AAD of the payload.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 fn empty_settings() -> serde_json::Value {
@@ -114,4 +123,40 @@ pub struct GeneratePasswordOptions {
     pub lowercase: bool,
     pub numbers: bool,
     pub symbols: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unknown_fields_survive_parse_and_serialize() {
+        let json = r#"{
+            "revision": 2,
+            "deviceId": "device",
+            "entries": [{
+                "id": "1", "title": "Mail", "username": "", "password": "", "url": "",
+                "notes": "", "createdAt": "", "updatedAt": "", "deletedAt": null,
+                "conflict": false, "favorite": true, "tags": ["x"]
+            }],
+            "settings": {},
+            "futureField": {"a": 1}
+        }"#;
+        let data: VaultData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.entries[0].extra["favorite"], true);
+        assert_eq!(data.entries[0].extra["tags"], serde_json::json!(["x"]));
+        assert_eq!(data.extra["futureField"], serde_json::json!({"a": 1}));
+        assert!(data.entries[0].deleted_at.is_none());
+
+        let serialized: serde_json::Value = serde_json::to_value(&data).unwrap();
+        let original: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(serialized, original);
+    }
+
+    #[test]
+    fn no_unknown_fields_serialize_nothing_extra() {
+        let entry = VaultEntry::imported("T".into(), String::new(), String::new(), String::new(), String::new());
+        let value = serde_json::to_value(&entry).unwrap();
+        assert_eq!(value.as_object().unwrap().len(), 10);
+    }
 }

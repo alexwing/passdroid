@@ -158,6 +158,7 @@ mod tests {
                 "https://example.com".to_string(),
             )],
             settings: serde_json::json!({ "clearClipboard": 30 }),
+            extra: Default::default(),
         }
     }
 
