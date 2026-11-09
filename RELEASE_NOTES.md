@@ -1,6 +1,33 @@
-# Passdroid v3.1.3
+# Passdroid v3.1.4
 
-## 🚀 What's New in v3.1.3
+## 🚀 What's New in v3.1.4
+
+### 💾 Android export fixed (important)
+- **The bug**: in v3.1.3 on some Android builds (seen on HyperOS / Android 16) the system "save as" picker lost its result, so *Export* silently created an **empty file** and showed nothing.
+- **The fix**: on Android, exports are written with MediaStore straight to **`Download/Passdroid/`** (`passdroid-copy-YYYYMMDD-HHmmss.pdvault` / `passdroid-export-….xml`), without a picker. Every export, on Android and desktop, is **read back and verified** (valid vault header or XML root) before reporting success; a failed export removes the partial file and shows an error. The toast tells you exactly where the file was saved.
+- The legacy XML export now strips characters that are not valid in XML 1.0 instead of failing.
+
+> [!IMPORTANT]
+> If you exported a backup with v3.1.3 on Android, check its size: a 0-byte file is not a backup. Export again with v3.1.4.
+
+### 🎨 New design
+- **Navy & amber** palette taken from the app icon, serif headings, light / dark / system themes with AA contrast and visible focus everywhere.
+- **Custom title bar on desktop** (drag, double-click to maximize, minimize / maximize / close).
+- **Start screen**: available vaults first, then a single row of actions. **Unlock**: a large lock "knob" as the focal point.
+- **Desktop vault**: a labelled side rail with sync status that **collapses to icons only** (remembered), entry list with avatars, editor with a fixed action bar and a password-strength meter.
+- **Mobile**: bottom bar, floating "new entry" button, full-screen editor whose header sits below the status bar, toasts that never block taps, settings tabs that stay in place.
+
+### 📝 Markdown in notes
+- *Write* / *Preview* toggle in the notes field (GFM: tables, task lists, code), and the chosen view becomes the default for every entry.
+- Safe rendering: no HTML execution, only http/https/mailto links opened outside the app (with the real host shown for deceptive links), no remote image loading, and protection against pathological inputs.
+
+### 🛡️ Other fixes
+- Deleting an entry now asks for confirmation.
+- Settings dialog tabs no longer collapse or jump on phones; the unlock button stays visible with the keyboard open.
+
+---
+
+## 📦 Prior v3.1.3 Highlights
 
 ### 🔒 FTPS Sync with Certificate Validation
 - **Encrypted transport**: sync now supports explicit FTPS (AUTH TLS on port 21) using `rustls` (no OpenSSL on Android). The server certificate is validated against the public Mozilla roots **and the configured host name**, and the data channel is encrypted as well (`PROT P`). There is no "accept any certificate" mode.
@@ -75,7 +102,7 @@
 ---
 
 ### 📦 Available Downloads:
-- 🤖 **Android (APK)**: `Passdroid-v3.1.3-Android.apk`
-- 🪟 **Windows (Setup Installer)**: `Passdroid-v3.1.3-Setup.exe`
-- 🪟 **Windows (Standalone / Portable)**: `Passdroid-v3.1.3-Standalone.exe`
-- 🪟 **Windows (MSI Installer)**: `Passdroid-v3.1.3.msi`
+- 🤖 **Android (APK)**: `Passdroid-v3.1.4-Android.apk`
+- 🪟 **Windows (Setup Installer)**: `Passdroid-v3.1.4-Setup.exe`
+- 🪟 **Windows (Standalone / Portable)**: `Passdroid-v3.1.4-Standalone.exe`
+- 🪟 **Windows (MSI Installer)**: `Passdroid-v3.1.4.msi`

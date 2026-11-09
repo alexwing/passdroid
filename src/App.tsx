@@ -1,11 +1,14 @@
 import {
-  ArrowLeft,
+  AlertTriangle,
   Briefcase,
   Building2,
+  ChevronLeft,
+  ChevronRight,
   Cloud,
   Copy,
   CreditCard,
   Download,
+  Edit3,
   ExternalLink,
   Eye,
   EyeOff,
@@ -17,10 +20,15 @@ import {
   Import,
   KeyRound,
   Landmark,
+  List,
   Lock,
+  LockOpen,
   type LucideIcon,
   Mail,
+  Monitor,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   QrCode,
   RefreshCw,
@@ -34,20 +42,21 @@ import {
   Star,
   Sun,
   Trash2,
+  Upload,
   User,
-  Wand2,
   Wifi,
-  X,
 } from "lucide-react";
-import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, ReactNode, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { mkdir, readFile, readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { appLocalDataDir, join } from "@tauri-apps/api/path";
 import appIcon from "./assets/passdroid.png";
 import Api, {
+  ExportKind,
   GeneratePasswordOptions,
   ImportPreview,
+  NotesView,
   Preferences,
   SyncCheck,
   SyncConfig,
@@ -59,6 +68,14 @@ import { useTranslation } from "./context/LanguageContext";
 import { useTheme } from "./context/ThemeContext";
 import { QrCameraScanner } from "./components/QrCameraScanner";
 import { QrVaultModal, parseQrPayload } from "./components/QrVaultModal";
+import { Modal } from "./components/Modal";
+import { Toast } from "./components/Toast";
+import { TitleBar } from "./components/TitleBar";
+import { NotesBoundary } from "./components/NotesPlain";
+import { passwordStrength, type StrengthLevel } from "./utils/passwordStrength";
+
+// Markdown pulls in react-markdown + remark-gfm (~170 kB), so it loads on first preview.
+const NotesMarkdown = lazy(() => import("./components/NotesMarkdown").then((m) => ({ default: m.NotesMarkdown })));
 
 type Screen = "start" | "unlock" | "vault";
 type SettingsTab = "general" | "sync" | "security";
@@ -69,6 +86,8 @@ const defaultPreferences: Preferences = {
   language: "system",
   recentVaults: [],
   vaultIcons: {},
+  railCollapsed: false,
+  notesView: "edit",
 };
 
 // Curated icon set a user can assign to a vault. The chosen key is stored in
@@ -119,6 +138,51 @@ const vaultLabel = (path: string) => {
 // File name without directory or extension, for the recents list and unlock screen.
 const vaultName = (path: string) => vaultLabel(path).replace(/\.[^.]+$/, "");
 
+// Parent folder + file, abbreviated (e.g. "…\Vaults\personal.pdvault"), for the
+// recents list and the unlock screen. Works for real paths and content:// URIs.
+const shortPath = (path: string) => {
+  let decoded = path;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    /* keep raw on malformed encoding */
+  }
+  const sep = decoded.includes("\\") ? "\\" : "/";
+  const parts = decoded.split(/[\\/:]/).filter(Boolean);
+  return parts.length > 2 ? `…${sep}${parts.slice(-2).join(sep)}` : parts.join(sep);
+};
+
+// Stable hue (0-359) from a string, for the avatar tint of entries and vaults.
+const hueOf = (seed: string) => {
+  if (!seed) return 215;
+  let hue = 0;
+  for (const char of seed) hue = (hue * 31 + (char.codePointAt(0) ?? 0)) % 360;
+  return hue;
+};
+const hueStyle = (seed: string) => ({ "--h": hueOf(seed) }) as CSSProperties;
+const initialOf = (title: string) => (Array.from(title.trim())[0] ?? "?").toUpperCase();
+
+const strengthTone = (level: StrengthLevel) => (level >= 3 ? "strong" : level === 2 ? "fair" : "weak");
+const strengthKey = (level: StrengthLevel) =>
+  level >= 3 ? "strengthStrong" : level === 2 ? "strengthFair" : "strengthWeak";
+
+// Sync state per vault, remembered so the start screen can badge locked vaults.
+// UI-only cache (never contains secrets); the real sync config lives in the vault.
+type SyncBadge = "sync" | "local" | "pending";
+const SYNC_BADGES_KEY = "passdroid.vaultSync";
+const loadSyncBadges = (): Record<string, SyncBadge> => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SYNC_BADGES_KEY) ?? "{}");
+    const result: Record<string, SyncBadge> = {};
+    for (const [path, badge] of Object.entries(parsed ?? {})) {
+      if (badge === "sync" || badge === "local" || badge === "pending") result[path] = badge;
+    }
+    return result;
+  } catch {
+    return {};
+  }
+};
+
 const emptyEntry = (): VaultEntry => ({
   id: "",
   title: "",
@@ -142,6 +206,7 @@ function App() {
   const [createName, setCreateName] = useState("");
   const [isAndroid, setIsAndroid] = useState(false);
   const [unlockPassword, setUnlockPassword] = useState("");
+  const [unlockError, setUnlockError] = useState("");
   const [entries, setEntries] = useState<VaultEntry[]>([]);
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<VaultEntry>(emptyEntry());
@@ -153,11 +218,13 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [deletePromptOpen, setDeletePromptOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [removePromptPath, setRemovePromptPath] = useState<string | null>(null);
   const [changePasswordForm, setChangePasswordForm] = useState({
     oldPassword: "",
@@ -179,12 +246,14 @@ function App() {
   const [syncForm, setSyncForm] = useState<SyncConfig>(defaultSync);
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "ok" | "error">("idle");
   const [syncPrompt, setSyncPrompt] = useState<SyncCheck | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [vaultSyncBadges, setVaultSyncBadges] = useState<Record<string, SyncBadge>>(loadSyncBadges);
   // Suppress the auto-lock-on-background while a native file picker is in front
   // (the picker backgrounds the webview, which would otherwise trigger a lock).
   const suppressLock = useRef(false);
 
   // i18n and theme are now managed by their respective contexts (LanguageProvider / ThemeProvider).
-  const { t, language, setLanguage } = useTranslation();
+  const { t, language, resolved, setLanguage } = useTranslation();
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
 
   // QR vault linking state
@@ -216,6 +285,7 @@ function App() {
       setEditing(false);
       setSyncState("idle");
       setUnlockPassword("");
+      setUnlockError("");
       setScreen("unlock");
     };
     document.addEventListener("visibilitychange", handleHidden);
@@ -239,6 +309,15 @@ function App() {
     );
   }, [entries, query]);
 
+  // Entries whose password is weak get a badge in the list.
+  const weakIds = useMemo(
+    () =>
+      new Set(
+        entries.filter((entry) => entry.password && passwordStrength(entry.password) <= 1).map((entry) => entry.id),
+      ),
+    [entries],
+  );
+
   // Load the selected entry into the editor only when the selection changes.
   // Re-fetching the list returns fresh object identities for the same entries,
   // so depending on the entry object would clobber unsaved edits on every save.
@@ -248,7 +327,12 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  const run = async <T,>(operation: () => Promise<T>, successKey?: string) => {
+  // `inlineError` routes a failure to a field instead of a toast.
+  const run = async <T,>(
+    operation: () => Promise<T>,
+    successKey?: string,
+    inlineError?: (message: string) => void,
+  ) => {
     setBusy(true);
     setNotice(null);
     try {
@@ -256,7 +340,9 @@ function App() {
       if (successKey) setNotice({ kind: "success", text: t(successKey) });
       return result;
     } catch (error) {
-      setNotice({ kind: "error", text: formatError(error, t) });
+      const message = formatError(error, t);
+      if (inlineError) inlineError(message);
+      else setNotice({ kind: "error", text: message });
       return null;
     } finally {
       setBusy(false);
@@ -273,6 +359,15 @@ function App() {
     });
   };
 
+  // UI preferences (rail, notes view) are saved as a fresh read-modify-write, like theme
+  // and language, so a stale copy in this component can never revert them on disk.
+  const saveUiPreference = (patch: Partial<Pick<Preferences, "railCollapsed" | "notesView">>) => {
+    setPreferences((prev) => ({ ...prev, ...patch }));
+    Api.getPreferences()
+      .then((fresh) => Api.savePreferences({ ...fresh, ...patch }))
+      .catch(() => {});
+  };
+
   const rememberVault = (path: string) => {
     persistPreferences((prev) => ({
       ...prev,
@@ -285,6 +380,23 @@ function App() {
       ...prev,
       recentVaults: prev.recentVaults.filter((item) => item !== path),
     }));
+    setSyncBadge(path, null);
+  };
+
+  const setSyncBadge = (path: string, badge: SyncBadge | null) => {
+    if (!path) return;
+    setVaultSyncBadges((prev) => {
+      if ((prev[path] ?? null) === badge) return prev;
+      const next = { ...prev };
+      if (badge) next[path] = badge;
+      else delete next[path];
+      try {
+        localStorage.setItem(SYNC_BADGES_KEY, JSON.stringify(next));
+      } catch {
+        /* storage unavailable: the badge just won't persist */
+      }
+      return next;
+    });
   };
 
   // Locked-screen icon comes from the preferences cache (filled when the vault
@@ -318,6 +430,7 @@ function App() {
   const openRecent = (path: string) => {
     setVaultPath(path);
     setUnlockPassword("");
+    setUnlockError("");
     setNotice(null);
     setScreen("unlock");
   };
@@ -332,8 +445,11 @@ function App() {
       const list = await Api.listEntries();
       setEntries(list);
       setSyncState("ok");
+      setLastSyncAt(new Date());
+      setSyncBadge(vaultPath, "sync");
     } catch {
       setSyncState("error");
+      setSyncBadge(vaultPath, "pending");
     }
   };
 
@@ -352,8 +468,11 @@ function App() {
     if (result) {
       setEntries(result);
       setSyncState("ok");
+      setLastSyncAt(new Date());
+      setSyncBadge(vaultPath, "sync");
     } else {
       setSyncState("error");
+      setSyncBadge(vaultPath, "pending");
     }
   };
 
@@ -366,6 +485,7 @@ function App() {
     if (snapshot) {
       setSyncConfig(syncForm);
       setVaultStatus(snapshot.status);
+      setSyncBadge(vaultPath, syncForm.enabled ? "sync" : "local");
       // Push immediately so the remote file appears right after configuring.
       if (syncForm.enabled) await manualSync();
     }
@@ -475,12 +595,23 @@ function App() {
       setSyncState("idle");
       setSyncPrompt(null);
       setEditing(false);
+      setSyncBadge(path, "local");
+      setCreateOpen(false);
       setScreen("vault");
     }
   };
 
+  const closeCreate = () => {
+    setCreateOpen(false);
+    setCreatePassword("");
+    setCreatePasswordRepeat("");
+    setCreateName("");
+    setVaultPath("");
+  };
+
   const unlockVault = async (event: FormEvent) => {
     event.preventDefault();
+    setUnlockError("");
     const status = await run(async () => {
       let contents: string;
       try {
@@ -491,7 +622,7 @@ function App() {
         throw "vault_file_unreadable";
       }
       return Api.unlockVault(contents, unlockPassword);
-    }, "vaultUnlocked");
+    }, "vaultUnlocked", setUnlockError);
     if (status) {
       setVaultStatus(status);
       rememberVault(vaultPath);
@@ -506,6 +637,7 @@ function App() {
       const cfg = await Api.getSyncConfig().catch(() => null);
       setSyncConfig(cfg);
       setSyncForm(cfg ?? defaultSync);
+      setSyncBadge(vaultPath, cfg?.enabled ? "sync" : "local");
       // On open, check the remote and offer to download it if it is newer,
       // instead of silently pulling.
       if (cfg?.enabled) {
@@ -534,6 +666,7 @@ function App() {
     setSyncConfig(null);
     setSyncForm(defaultSync);
     setSyncState("idle");
+    setLastSyncAt(null);
     setSyncPrompt(null);
     setEditing(false);
     setScreen("start");
@@ -594,50 +727,106 @@ function App() {
     }
   };
 
+  // Always hands the URL to the system opener; the webview itself never navigates.
+  // Stable identity so the memoised Markdown preview is not re-parsed on every App render.
+  const openExternal = useCallback(
+    async (url: string) => {
+      try {
+        await openUrl(url);
+      } catch {
+        setNotice({ kind: "error", text: t("err_unknown") });
+      }
+    },
+    [t],
+  );
+
   const openDraftUrl = async () => {
     const url = draft.url.trim();
     if (!isValidUrl(url)) return;
+    await openExternal(url);
+  };
+
+  // Write an export and prove it landed: read it back and verify it, so a
+  // picker or write that silently produced an empty file is reported, never ignored.
+  // Resolves to where it was saved, or null when the user cancelled the picker.
+  const writeExport = async (
+    kind: ExportKind,
+    contents: string,
+    defaultPath: string,
+    filters: { name: string; extensions: string[] }[],
+  ): Promise<string | null> => {
+    if (isAndroid) {
+      // Android skips the system picker (it can lose its result): the Kotlin plugin
+      // saves into Download/Passdroid and verifies it. Only Android < 10 falls through.
+      try {
+        return (await Api.exportSaveAndroid(kind, contents)).path;
+      } catch (error) {
+        if (error !== "export_unsupported") throw error;
+      }
+    }
+
+    let selected: string | null;
     try {
-      await openUrl(url);
+      selected = await pick(() => save({ defaultPath, filters }));
+    } catch (error) {
+      if (/cancel/i.test(String(error))) return null;
+      throw "export_write_failed";
+    }
+    if (!selected) {
+      // Desktop returns null on cancel; on Android a non-cancel without a file is a lost result.
+      if (isAndroid) throw "export_no_file";
+      return null;
+    }
+
+    try {
+      await writeTextFile(selected, contents);
     } catch {
-      setNotice({ kind: "error", text: t("err_unknown") });
+      throw "export_write_failed";
     }
+    let written: string;
+    try {
+      written = await readTextFile(selected);
+    } catch {
+      throw "export_verify_failed";
+    }
+    if (written !== contents) throw "export_verify_failed";
+    await Api.verifyExport(kind, written);
+    return selected;
   };
 
-  const exportCopy = async () => {
-    const selected = await pick(() =>
-      save({
-        defaultPath: "passdroid-copy.pdvault",
-        filters: [{ name: t("vaultFile"), extensions: ["pdvault"] }],
-      }),
+  const runExport = async (
+    kind: ExportKind,
+    getContents: () => Promise<string>,
+    defaultPath: string,
+    filters: { name: string; extensions: string[] }[],
+    successKey: string,
+  ) => {
+    const location = await run(async () => {
+      const contents = await getContents();
+      return writeExport(kind, contents, defaultPath, filters);
+    });
+    if (!location) return;
+    setNotice({ kind: "success", text: `${t(successKey)} ${t("exportedTo")} ${location}` });
+    setExportOpen(false);
+  };
+
+  const exportCopy = () =>
+    runExport(
+      "vault",
+      Api.exportVaultCopy,
+      "passdroid-copy.pdvault",
+      [{ name: t("vaultFile"), extensions: ["pdvault"] }],
+      "copyExported",
     );
-    if (selected) {
-      const ok = await run(async () => {
-        const contents = await Api.exportVaultCopy();
-        await writeTextFile(selected, contents);
-        return true;
-      }, "copyExported");
-      if (ok) setExportOpen(false);
-    }
-  };
 
-  const exportLegacyXml = async () => {
-    const selected = await pick(() =>
-      save({
-        defaultPath: "passdroid-export.xml",
-        filters: [{ name: "XML", extensions: ["xml"] }],
-      }),
+  const exportLegacyXml = () =>
+    runExport(
+      "xml",
+      Api.exportLegacyXml,
+      "passdroid-export.xml",
+      [{ name: "XML", extensions: ["xml"] }],
+      "xmlExported",
     );
-    if (selected) {
-      const ok = await run(async () => {
-        const xml = await Api.exportLegacyXml();
-        await writeTextFile(selected, xml);
-        return true;
-      }, "xmlExported");
-      if (ok) setExportOpen(false);
-    }
-  };
-
 
   const changeMasterPassword = async (event: FormEvent) => {
     event.preventDefault();
@@ -791,6 +980,7 @@ function App() {
       setVaultStatus(success.status);
       rememberVault(success.path);
       cacheVaultIcon(success.path, success.status.icon);
+      setSyncBadge(success.path, "sync");
       const loaded = await Api.listEntries().catch(() => []);
       setEntries(loaded);
       setSyncConfig(config);
@@ -804,31 +994,99 @@ function App() {
     }
   };
 
+  // The custom title bar replaces the native one on desktop only. The user agent
+  // check avoids showing it for a frame on Android before isAndroid resolves.
+  const showTitleBar = !isAndroid && !/android/i.test(navigator.userAgent);
+
+  const startNewEntry = () => {
+    setSelectedId("");
+    setDraft(emptyEntry());
+    setEditing(true);
+  };
+
+  // Back to the saved version of the entry (or an empty one) and close the
+  // full-screen editor on narrow screens.
+  const discardChanges = () => {
+    setDraft(entries.find((entry) => entry.id === selectedId) ?? emptyEntry());
+    setEditing(false);
+  };
+
+  const hasRecents = preferences.recentVaults.length > 0;
+  const draftStrength = passwordStrength(draft.password);
+  const draftTone = strengthTone(draftStrength);
+  const syncing = syncState === "syncing";
+  const railCollapsed = preferences.railCollapsed === true;
+  const notesView: NotesView = preferences.notesView === "preview" ? "preview" : "edit";
+  const syncStatus: { tone: string; text: string } = !syncConfig?.enabled
+    ? { tone: "", text: t("syncLocalOnly") }
+    : syncing
+      ? { tone: "warn", text: t("syncing") }
+      : syncState === "error"
+        ? { tone: "bad", text: t("syncFailed") }
+        : syncState === "ok" && lastSyncAt
+          ? {
+              tone: "ok",
+              text: t("syncedAt", {
+                time: new Intl.DateTimeFormat(resolved, { timeStyle: "short" }).format(lastSyncAt),
+              }),
+            }
+          : { tone: "", text: t("syncStatusIdle") };
+  const modifiedAt = draft.updatedAt ? new Date(draft.updatedAt) : null;
+  const modifiedText =
+    modifiedAt && !Number.isNaN(modifiedAt.getTime())
+      ? t("modifiedOn", {
+          date: new Intl.DateTimeFormat(resolved, { dateStyle: "medium", timeStyle: "short" }).format(modifiedAt),
+        })
+      : "";
+  const entryCount = `${entries.length} ${entries.length === 1 ? t("entry") : t("entries")}`;
+  const vaultIconKey = vaultStatus?.icon || DEFAULT_VAULT_ICON;
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell${showTitleBar ? " has-titlebar" : ""}`}>
+      {showTitleBar && (
+        <TitleBar title={t("appName")}>
+          {screen === "vault" && <span className="pill line titlebar-vault">{vaultName(vaultPath)}</span>}
+        </TitleBar>
+      )}
+
       {screen === "start" && (
         <main className="start-layout">
-          <section className="brand">
-            <img className="brand-icon" src={appIcon} alt="" width={44} height={44} />
-            <h1>{t("appName")}</h1>
-          </section>
+          <div className="start-body">
+            <section className="hero">
+              <img className="hero-logo" src={appIcon} alt="" width={64} height={64} />
+              <div>
+                <span className="eyebrow">{t("appTagline")}</span>
+                <h1>{t("appName")}</h1>
+              </div>
+            </section>
 
-          <section className="start-actions">
-            <div className="panel">
-              <button className="secondary-button full" type="button" onClick={chooseVaultForOpen} disabled={busy}>
-                {isAndroid ? <Import size={18} aria-hidden /> : <FolderOpen size={18} aria-hidden />}
-                {isAndroid ? t("importVault") : t("openVault")}
-              </button>
-              {isAndroid && <p className="hint">{t("importAndroidHint")}</p>}
-              {preferences.recentVaults.length > 0 && (
-                <div className="recent-vaults">
-                  <h3>{t("recentVaults")}</h3>
-                  <div className="recent-list">
-                    {preferences.recentVaults.map((path) => (
+            {hasRecents ? (
+              <section>
+                <div className="sechead">
+                  <h3 className="eyebrow">{t("recentVaults")}</h3>
+                  <span className="pill line">{t("vaultsCount", { count: preferences.recentVaults.length })}</span>
+                </div>
+                <div className="card recent-list">
+                  {preferences.recentVaults.map((path) => {
+                    const badge = vaultSyncBadges[path];
+                    return (
                       <div className="recent-row" key={path}>
-                        <button className="recent-open" type="button" onClick={() => openRecent(path)} title={vaultName(path)}>
-                          <VaultGlyph icon={getVaultIcon(path)} size={22} />
-                          <span className="recent-name">{vaultName(path)}</span>
+                        <button className="recent-open" type="button" onClick={() => openRecent(path)}>
+                          <span className="av sq" style={hueStyle(path)}>
+                            <VaultGlyph icon={getVaultIcon(path)} size={20} />
+                          </span>
+                          <span className="recent-text">
+                            <span className="recent-name">{vaultName(path)}</span>
+                            <span className="recent-path">{shortPath(path)}</span>
+                          </span>
+                          {badge === "sync" && (
+                            <span className="pill ok">
+                              <span className="dot ok" aria-hidden />
+                              {t("badgeSync")}
+                            </span>
+                          )}
+                          {badge === "local" && <span className="pill line">{t("badgeLocal")}</span>}
+                          {badge === "pending" && <span className="pill warn">{t("badgePending")}</span>}
                         </button>
                         <button
                           className="icon-button"
@@ -839,139 +1097,234 @@ function App() {
                         >
                           <Trash2 size={16} aria-hidden />
                         </button>
+                        <ChevronRight className="recent-chevron" size={16} aria-hidden />
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
+              </section>
+            ) : (
+              <section className="card start-empty">
+                <span className="tile xl">
+                  <ShieldCheck size={28} aria-hidden />
+                </span>
+                <h2>{t("startEmptyTitle")}</h2>
+                <p className="hint">{t("startEmptyBody")}</p>
+                <button className="primary-button" type="button" onClick={() => setCreateOpen(true)} disabled={busy}>
+                  <Plus size={18} aria-hidden />
+                  {t("newVault")}
+                </button>
+              </section>
+            )}
 
-            <button className="qr-link-card" type="button" onClick={() => setQrScannerOpen(true)} disabled={busy}>
-              <QrCode size={22} aria-hidden />
-              <div>
-                <strong>{t("qrLinkViaQr")}</strong>
-                <span>{t("qrHowBody")}</span>
-              </div>
-            </button>
-
-            <form className="panel" onSubmit={createVault}>
-              <div className="panel-heading">
-                <KeyRound size={22} aria-hidden />
-                <h2>{t("newVault")}</h2>
-              </div>
-              {isAndroid ? (
-                <label>
-                  <span>{t("vaultName")}</span>
-                  <input
-                    value={createName}
-                    onChange={(event) => setCreateName(event.target.value)}
-                    placeholder="passdroid"
-                    autoComplete="off"
-                  />
-                </label>
-              ) : (
-                <FilePickerRow label={t("vaultFile")} path={vaultPath} onPick={chooseVaultForCreate} t={t} />
+            <div className={`start-actions${hasRecents ? "" : " two"}`}>
+              {hasRecents && (
+                <button className="primary-button" type="button" onClick={() => setCreateOpen(true)} disabled={busy}>
+                  <Plus size={18} aria-hidden />
+                  {t("newVault")}
+                </button>
               )}
-              <PasswordInput
-                label={t("masterPassword")}
-                value={createPassword}
-                onChange={setCreatePassword}
-              />
-              <PasswordInput
-                label={t("repeatPassword")}
-                value={createPasswordRepeat}
-                onChange={setCreatePasswordRepeat}
-              />
-              <button className="primary-button" type="submit" disabled={busy}>
-                <Save size={18} aria-hidden />
-                {t("createVault")}
+              <button className="secondary-button" type="button" onClick={chooseVaultForOpen} disabled={busy}>
+                {isAndroid ? <Import size={18} aria-hidden /> : <FolderOpen size={18} aria-hidden />}
+                {isAndroid ? t("importVault") : t("openFile")}
               </button>
-            </form>
-          </section>
+              <button className="secondary-button" type="button" onClick={() => setQrScannerOpen(true)} disabled={busy}>
+                <QrCode size={18} aria-hidden />
+                {t("qrLinkShort")}
+              </button>
+            </div>
+            {isAndroid && <p className="hint center">{t("importAndroidHint")}</p>}
+
+            <p className="fineprint">
+              <ShieldCheck size={14} aria-hidden />
+              {t("startFootnote")}
+            </p>
+          </div>
         </main>
       )}
 
       {screen === "unlock" && (
         <main className="unlock-layout">
-          <form className="panel unlock-panel" onSubmit={unlockVault}>
-            <div className="panel-heading">
-              <Lock size={22} aria-hidden />
-              <h2>{t("unlock")}</h2>
+          <form
+            className="unlock-body"
+            onSubmit={unlockVault}
+            onFocus={(event) => {
+              // The soft keyboard resizes the viewport a moment after focus: bring the button into view.
+              const form = event.currentTarget;
+              window.setTimeout(() => {
+                form.querySelector<HTMLElement>("button[type=submit]")?.scrollIntoView({ block: "nearest" });
+              }, 300);
+            }}
+          >
+            <div className="knob">
+              <Lock size={40} strokeWidth={2.5} aria-hidden />
             </div>
-            <div className="vault-chip">
-              <VaultGlyph icon={getVaultIcon(vaultPath)} size={20} />
-              <span>{vaultName(vaultPath)}</span>
+            <div className="unlock-head">
+              <span className="eyebrow">{t("lockedEyebrow")}</span>
+              <h2>{vaultName(vaultPath)}</h2>
+              <p className="unlock-path">{shortPath(vaultPath)}</p>
             </div>
-            <PasswordInput
-              label={t("masterPassword")}
-              value={unlockPassword}
-              onChange={setUnlockPassword}
-              autoFocus
-            />
-            <button className="primary-button" type="submit" disabled={busy}>
-              <Lock size={18} aria-hidden />
-              {t("unlock")}
-            </button>
-            <button className="ghost-button" type="button" onClick={() => setScreen("start")}>
-              {t("cancel")}
-            </button>
+            <div className="unlock-form">
+              <PasswordInput
+                label={t("masterPassword")}
+                value={unlockPassword}
+                onChange={(value) => {
+                  setUnlockPassword(value);
+                  if (unlockError) setUnlockError("");
+                }}
+                autoFocus
+                leadIcon
+                error={unlockError}
+              />
+              <button className="primary-button lg" type="submit" disabled={busy}>
+                <LockOpen size={18} aria-hidden />
+                {t("unlock")}
+              </button>
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={() => {
+                  setUnlockError("");
+                  setScreen("start");
+                }}
+              >
+                {t("cancel")}
+              </button>
+            </div>
+            <div className="unlock-foot">
+              <div className="status">
+                <span className="dot warn" aria-hidden />
+                {t("lockedFooter")}
+              </div>
+            </div>
           </form>
         </main>
       )}
 
       {screen === "vault" && (
-        <>
-          <header className="topbar">
-            <div className="topbar-title">
-              <VaultGlyph icon={vaultStatus?.icon || DEFAULT_VAULT_ICON} size={26} />
+        <main className={`vault-layout${railCollapsed ? " rail-collapsed" : ""}`}>
+          <aside className="rail">
+            <div className="rail-head">
+              <span className="vault-tile" title={railCollapsed ? vaultName(vaultPath) : undefined}>
+                <VaultGlyph icon={vaultIconKey} size={20} />
+              </span>
               <div>
                 <strong>{vaultName(vaultPath)}</strong>
-                <span>{entries.length} {entries.length === 1 ? t("entry") : t("entries")}</span>
+                <span>{entryCount}</span>
               </div>
             </div>
-            <div className="topbar-actions">
+            <nav className="nav" aria-label={t("navLabel")}>
+              <NavButton
+                active
+                icon={<List size={16} aria-hidden />}
+                label={t("entriesTitle")}
+                collapsed={railCollapsed}
+                trailing={<span className="nav-count">{entries.length}</span>}
+                onClick={() => setEditing(false)}
+              />
+              <NavButton
+                icon={<Sparkles size={16} aria-hidden />}
+                label={t("generator")}
+                collapsed={railCollapsed}
+                onClick={() => setGeneratorOpen(true)}
+              />
               {syncConfig?.enabled && (
-                <button
-                  className={`icon-button sync-button ${syncState}`}
-                  type="button"
-                  title={
-                    syncState === "syncing"
-                      ? t("syncing")
-                      : syncState === "error"
-                        ? t("syncFailed")
-                        : syncState === "ok"
-                          ? t("syncDone")
-                          : t("syncNow")
-                  }
-                  aria-label={t("syncNow")}
+                <NavButton
+                  icon={<RefreshCw size={16} className={syncing ? "spin" : ""} aria-hidden />}
+                  label={t("navSync")}
+                  collapsed={railCollapsed}
+                  title={syncStatus.text}
+                  trailing={<span className={`dot ${syncStatus.tone}`} aria-hidden />}
                   onClick={manualSync}
-                  disabled={busy || syncState === "syncing"}
-                >
-                  <RefreshCw size={19} className={syncState === "syncing" ? "spin" : ""} aria-hidden />
-                </button>
+                  disabled={busy || syncing}
+                />
               )}
-              <button className="icon-button" type="button" title={t("generator")} aria-label={t("generator")} onClick={() => setGeneratorOpen(true)}>
-                <Wand2 size={19} aria-hidden />
-              </button>
-              <button className="icon-button" type="button" title={t("importLegacy")} aria-label={t("importLegacy")} onClick={() => setImportOpen(true)}>
-                <Import size={19} aria-hidden />
-              </button>
-              <button className="icon-button" type="button" title={t("exportData")} aria-label={t("exportData")} onClick={() => setExportOpen(true)}>
-                <Download size={19} aria-hidden />
-              </button>
-              <button className="icon-button" type="button" title={t("settings")} aria-label={t("settings")} onClick={() => setSettingsOpen(true)}>
-                <Settings size={19} aria-hidden />
-              </button>
-              <button className="icon-button" type="button" title={t("lock")} aria-label={t("lock")} onClick={lockVault}>
-                <Lock size={19} aria-hidden />
+            </nav>
+            <span className="eyebrow nav-label">{t("navData")}</span>
+            <nav className="nav" aria-label={t("navData")}>
+              <NavButton
+                icon={<Download size={16} aria-hidden />}
+                label={t("navImport")}
+                collapsed={railCollapsed}
+                onClick={() => setImportOpen(true)}
+              />
+              <NavButton
+                icon={<Upload size={16} aria-hidden />}
+                label={t("exportData")}
+                collapsed={railCollapsed}
+                onClick={() => setExportOpen(true)}
+              />
+              <NavButton
+                icon={<Settings size={16} aria-hidden />}
+                label={t("settings")}
+                collapsed={railCollapsed}
+                onClick={() => setSettingsOpen(true)}
+              />
+            </nav>
+            <div className="rail-spacer" />
+            <div className="rail-foot">
+              <div className="status" title={railCollapsed ? syncStatus.text : undefined}>
+                <span className={`dot ${syncStatus.tone}`} aria-hidden />
+                <span className="status-text">{syncStatus.text}</span>
+              </div>
+              <NavButton
+                icon={railCollapsed ? <PanelLeftOpen size={16} aria-hidden /> : <PanelLeftClose size={16} aria-hidden />}
+                label={railCollapsed ? t("railExpand") : t("railCollapse")}
+                collapsed={railCollapsed}
+                onClick={() => saveUiPreference({ railCollapsed: !railCollapsed })}
+              />
+              <button
+                className="secondary-button full rail-lock"
+                type="button"
+                title={railCollapsed ? t("lock") : undefined}
+                aria-label={t("lock")}
+                onClick={lockVault}
+              >
+                <Lock size={16} aria-hidden />
+                <span className="nav-text">{t("lock")}</span>
               </button>
             </div>
-          </header>
+          </aside>
 
-          <main className="vault-layout">
-            <aside className="entry-sidebar">
+          <section className="listcol">
+            <div className="mtop">
+              <span className="vault-tile">
+                <VaultGlyph icon={vaultIconKey} size={18} />
+              </span>
+              <div className="mtop-text">
+                <h2>{vaultName(vaultPath)}</h2>
+                <div className="status">
+                  <span className={`dot ${syncStatus.tone}`} aria-hidden />
+                  {syncStatus.text} · {entryCount}
+                </div>
+              </div>
+              {syncConfig?.enabled && (
+                <button
+                  className={`icon-button round sync-button ${syncState}${syncing ? " pulse-ring" : ""}`}
+                  type="button"
+                  title={syncStatus.text}
+                  aria-label={t("syncNow")}
+                  onClick={manualSync}
+                  disabled={busy || syncing}
+                >
+                  <RefreshCw size={18} className={syncing ? "spin" : ""} aria-hidden />
+                </button>
+              )}
+              <button className="icon-button round" type="button" title={t("lock")} aria-label={t("lock")} onClick={lockVault}>
+                <Lock size={18} aria-hidden />
+              </button>
+            </div>
+
+            <div className="listhead">
+              <div className="list-top">
+                <h2>{t("entriesTitle")}</h2>
+                <button className="primary-button sm" type="button" onClick={startNewEntry}>
+                  <Plus size={14} aria-hidden />
+                  {t("newShort")}
+                </button>
+              </div>
               <div className="search-box">
-                <Search size={18} aria-hidden />
+                <Search size={16} aria-hidden />
                 <input
                   aria-label={t("search")}
                   placeholder={t("search")}
@@ -979,48 +1332,83 @@ function App() {
                   onChange={(event) => setQuery(event.target.value)}
                 />
               </div>
-              <button
-                className="secondary-button full"
-                type="button"
-                onClick={() => {
-                  setSelectedId("");
-                  setDraft(emptyEntry());
-                  setEditing(true);
-                }}
-              >
-                <Plus size={18} aria-hidden />
-                {t("newEntry")}
-              </button>
-              <div className="entry-list">
-                {filteredEntries.map((entry) => (
-                  <button
-                    className={`entry-row ${entry.id === selectedId ? "active" : ""}`}
-                    key={entry.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedId(entry.id);
-                      setEditing(true);
-                    }}
-                  >
-                    <span>{entry.title}</span>
-                    <small>{entry.username || entry.url}</small>
-                    {entry.conflict && <em>{t("conflict")}</em>}
-                  </button>
-                ))}
-                {entries.length === 0 && <p className="empty-state">{t("emptyVault")}</p>}
-                {entries.length > 0 && filteredEntries.length === 0 && (
-                  <p className="empty-state">{t("noSearchResults")}</p>
-                )}
-              </div>
-            </aside>
+            </div>
 
-            <section className={`editor-panel ${editing ? "editing" : ""}`}>
-              <button className="ghost-button editor-back" type="button" onClick={() => setEditing(false)}>
-                <ArrowLeft size={18} aria-hidden />
-                {t("back")}
-              </button>
-              <form className="entry-form" onSubmit={saveEntry}>
-                <label>
+            <div className="entry-list">
+              {filteredEntries.map((entry) => (
+                <button
+                  className={`entry-row ${entry.id === selectedId ? "active" : ""}`}
+                  key={entry.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedId(entry.id);
+                    setEditing(true);
+                  }}
+                >
+                  <span className="av" style={hueStyle(entry.title)} aria-hidden>
+                    {initialOf(entry.title)}
+                  </span>
+                  <span className="tx">
+                    <b>{entry.title}</b>
+                    <span>{entry.username || entry.url}</span>
+                  </span>
+                  {(entry.conflict || weakIds.has(entry.id)) && (
+                    <span className="bd">
+                      {entry.conflict && <em className="pill bad">{t("conflict")}</em>}
+                      {weakIds.has(entry.id) && <em className="pill warn">{t("strengthWeak")}</em>}
+                    </span>
+                  )}
+                </button>
+              ))}
+              {entries.length === 0 && <p className="empty-state">{t("emptyVault")}</p>}
+              {entries.length > 0 && filteredEntries.length === 0 && (
+                <p className="empty-state">{t("noSearchResults")}</p>
+              )}
+            </div>
+
+            <div className="listfoot">
+              <span className="status">{t("entriesShown", { shown: filteredEntries.length, total: entries.length })}</span>
+              <span className="status">
+                <ShieldCheck size={14} aria-hidden />
+                {t("encrypted")}
+              </span>
+            </div>
+          </section>
+
+          <section className={`editor-panel ${editing ? "editing" : ""}`}>
+            <form className="entry-form" onSubmit={saveEntry}>
+              <header className="ed-head">
+                <button className="icon-button ed-back" type="button" onClick={() => setEditing(false)} title={t("back")} aria-label={t("back")}>
+                  <ChevronLeft size={22} aria-hidden />
+                </button>
+                <span className="av lg" style={hueStyle(draft.title)} aria-hidden>
+                  {initialOf(draft.title)}
+                </span>
+                <div className="ed-title">
+                  <span className="eyebrow">{draft.id ? t("editEntry") : t("newEntry")}</span>
+                  <h2>{draft.title.trim() || t("untitled")}</h2>
+                </div>
+                {draftStrength > 0 && (
+                  <span className={`pill ed-strength ${draftTone === "weak" ? "warn" : draftTone === "fair" ? "line" : "ok"}`}>
+                    {draftTone === "weak" && <AlertTriangle size={12} aria-hidden />}
+                    {draftTone === "strong" && <ShieldCheck size={12} aria-hidden />}
+                    {t(strengthKey(draftStrength))}
+                  </span>
+                )}
+                <button
+                  className="icon-button danger ed-del-mobile"
+                  type="button"
+                  onClick={() => setDeletePromptOpen(true)}
+                  disabled={!draft.id || busy}
+                  title={t("delete")}
+                  aria-label={t("delete")}
+                >
+                  <Trash2 size={18} aria-hidden />
+                </button>
+              </header>
+
+              <div className="ed-body">
+                <label className="span-2">
                   <span>{t("title")}</span>
                   <input
                     value={draft.title}
@@ -1037,7 +1425,7 @@ function App() {
                       autoComplete="username"
                     />
                     <button className="icon-button" type="button" title={t("copy")} aria-label={t("copy")} onClick={() => copyToClipboard(draft.username)}>
-                      <Copy size={18} aria-hidden />
+                      <Copy size={16} aria-hidden />
                     </button>
                   </div>
                 </label>
@@ -1050,17 +1438,28 @@ function App() {
                       onChange={(event) => setDraft({ ...draft, password: event.target.value })}
                       autoComplete="new-password"
                     />
-                    <button className="icon-button" type="button" title={t("password")} aria-label={t("password")} onClick={() => setShowPassword((value) => !value)}>
-                      {showPassword ? <EyeOff size={18} aria-hidden /> : <Eye size={18} aria-hidden />}
+                    <button
+                      className="icon-button"
+                      type="button"
+                      title={showPassword ? t("hidePassword") : t("showPassword")}
+                      aria-label={showPassword ? t("hidePassword") : t("showPassword")}
+                      onClick={() => setShowPassword((value) => !value)}
+                    >
+                      {showPassword ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
                     </button>
                     <button className="icon-button" type="button" title={t("copy")} aria-label={t("copy")} onClick={() => copyToClipboard(draft.password)}>
-                      <Copy size={18} aria-hidden />
+                      <Copy size={16} aria-hidden />
+                    </button>
+                    <button className="icon-button" type="button" title={t("generator")} aria-label={t("generator")} onClick={() => setGeneratorOpen(true)}>
+                      <Sparkles size={16} aria-hidden />
                     </button>
                   </div>
+                  <StrengthMeter level={draftStrength} showLabel />
                 </label>
-                <label>
+                <label className="span-2">
                   <span>{t("url")}</span>
                   <div className="password-row">
+                    <Globe2 className="lead" size={16} aria-hidden />
                     <input
                       value={draft.url}
                       onChange={(event) => setDraft({ ...draft, url: event.target.value })}
@@ -1074,50 +1473,158 @@ function App() {
                       onClick={openDraftUrl}
                       disabled={!isValidUrl(draft.url)}
                     >
-                      <ExternalLink size={18} aria-hidden />
+                      <ExternalLink size={16} aria-hidden />
                     </button>
                   </div>
                 </label>
-                <label className="notes-field">
-                  <span>{t("notes")}</span>
-                  <textarea
-                    value={draft.notes}
-                    onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
-                  />
-                </label>
-                <div className="form-actions">
-                  <button className="primary-button" type="submit" disabled={busy}>
-                    <Save size={18} aria-hidden />
-                    {t("save")}
-                  </button>
-                  <button className="danger-button" type="button" onClick={deleteCurrentEntry} disabled={!draft.id || busy}>
-                    <Trash2 size={18} aria-hidden />
-                    {t("delete")}
-                  </button>
+                <div className="span-2 notes-field">
+                  <div className="notes-head">
+                    <label htmlFor="entry-notes">
+                      <span>{t("notes")}</span>
+                    </label>
+                    <div className="segmented sm" role="group" aria-label={t("notesView")}>
+                      <button
+                        className={notesView === "edit" ? "active" : ""}
+                        type="button"
+                        aria-pressed={notesView === "edit"}
+                        onClick={() => saveUiPreference({ notesView: "edit" })}
+                      >
+                        <Edit3 size={14} aria-hidden />
+                        {t("notesEdit")}
+                      </button>
+                      <button
+                        className={notesView === "preview" ? "active" : ""}
+                        type="button"
+                        aria-pressed={notesView === "preview"}
+                        onClick={() => saveUiPreference({ notesView: "preview" })}
+                      >
+                        <Eye size={14} aria-hidden />
+                        {t("notesPreview")}
+                      </button>
+                    </div>
+                  </div>
+                  {notesView === "edit" ? (
+                    <textarea
+                      id="entry-notes"
+                      value={draft.notes}
+                      placeholder={t("notesPlaceholder")}
+                      onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
+                    />
+                  ) : (
+                    <div className="notes-preview" id="entry-notes" role="region" aria-label={t("notes")} tabIndex={0}>
+                      {draft.notes.trim() ? (
+                        <NotesBoundary key={draft.id} source={draft.notes}>
+                          <Suspense fallback={null}>
+                            <NotesMarkdown source={draft.notes} onOpenLink={openExternal} />
+                          </Suspense>
+                        </NotesBoundary>
+                      ) : (
+                        <p className="notes-empty">{t("notesPreviewEmpty")}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </form>
-            </section>
-          </main>
-        </>
+              </div>
+
+              <footer className="ed-foot">
+                <button className="primary-button" type="submit" disabled={busy}>
+                  <Save size={18} aria-hidden />
+                  {t("save")}
+                </button>
+                <button className="ghost-button" type="button" onClick={discardChanges}>
+                  {t("discard")}
+                </button>
+                <span className="ed-spacer" />
+                {modifiedText && <span className="meta">{modifiedText}</span>}
+                <button
+                  className="danger-button ed-del"
+                  type="button"
+                  onClick={() => setDeletePromptOpen(true)}
+                  disabled={!draft.id || busy}
+                  title={t("delete")}
+                  aria-label={t("delete")}
+                >
+                  <Trash2 size={16} aria-hidden />
+                  <span className="ed-del-label">{t("delete")}</span>
+                </button>
+              </footer>
+            </form>
+          </section>
+
+          <button className="fab" type="button" onClick={startNewEntry} title={t("newEntry")} aria-label={t("newEntry")}>
+            <Plus size={24} strokeWidth={2.5} aria-hidden />
+          </button>
+
+          <nav className="tabbar" aria-label={t("navLabel")}>
+            <button className="tab active" type="button" aria-current="page" onClick={() => setEditing(false)}>
+              <List size={20} aria-hidden />
+              {t("entriesTitle")}
+            </button>
+            <button className="tab" type="button" onClick={() => setGeneratorOpen(true)}>
+              <Sparkles size={20} aria-hidden />
+              {t("generator")}
+            </button>
+            <button className="tab" type="button" onClick={() => setImportOpen(true)}>
+              <Download size={20} aria-hidden />
+              {t("navImport")}
+            </button>
+            <button className="tab" type="button" onClick={() => setExportOpen(true)}>
+              <Upload size={20} aria-hidden />
+              {t("exportData")}
+            </button>
+            <button className="tab" type="button" onClick={() => setSettingsOpen(true)}>
+              <Settings size={20} aria-hidden />
+              {t("settings")}
+            </button>
+          </nav>
+        </main>
       )}
 
       {notice && (
-        <div className={`notice ${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
-          <div className="notice-body">
-            <span>{notice.kind === "error" ? t("error") : notice.text}</span>
-            {notice.kind === "error" && <p>{notice.text}</p>}
-          </div>
-          <button className="notice-close" type="button" onClick={() => setNotice(null)} aria-label={t("close")} title={t("close")}>
-            <X size={16} aria-hidden />
-          </button>
-        </div>
+        <Toast notice={notice} onClose={() => setNotice(null)} />
+      )}
+
+      {createOpen && (
+        <Modal title={t("newVault")} eyebrow={t("appName")} onClose={closeCreate}>
+          <form className="stack-form" onSubmit={createVault}>
+            {isAndroid ? (
+              <label>
+                <span>{t("vaultName")}</span>
+                <input
+                  value={createName}
+                  onChange={(event) => setCreateName(event.target.value)}
+                  placeholder="passdroid"
+                  autoComplete="off"
+                  autoFocus
+                />
+              </label>
+            ) : (
+              <FilePickerRow label={t("vaultFile")} path={vaultPath} onPick={chooseVaultForCreate} t={t} />
+            )}
+            <PasswordInput label={t("masterPassword")} value={createPassword} onChange={setCreatePassword}>
+              <StrengthMeter level={passwordStrength(createPassword)} showLabel />
+            </PasswordInput>
+            <PasswordInput label={t("repeatPassword")} value={createPasswordRepeat} onChange={setCreatePasswordRepeat} />
+            <div className="modal-actions">
+              <button className="ghost-button" type="button" onClick={closeCreate}>
+                {t("cancel")}
+              </button>
+              <button className="primary-button" type="submit" disabled={busy}>
+                <Save size={18} aria-hidden />
+                {t("createVault")}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {settingsOpen && (
-        <Modal title={t("settings")} onClose={closeSettings} t={t}>
-          <div className="settings-tabs">
+        <Modal title={t("settings")} eyebrow={t("appName")} onClose={closeSettings}>
+          <div className="settings-tabs" role="tablist">
             <button
               type="button"
+              role="tab"
+              aria-selected={settingsTab === "general"}
               className={`settings-tab ${settingsTab === "general" ? "active" : ""}`}
               onClick={() => setSettingsTab("general")}
             >
@@ -1126,6 +1633,8 @@ function App() {
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={settingsTab === "sync"}
               className={`settings-tab ${settingsTab === "sync" ? "active" : ""}`}
               onClick={() => setSettingsTab("sync")}
             >
@@ -1134,6 +1643,8 @@ function App() {
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={settingsTab === "security"}
               className={`settings-tab ${settingsTab === "security" ? "active" : ""}`}
               onClick={() => setSettingsTab("security")}
             >
@@ -1144,66 +1655,66 @@ function App() {
 
           {settingsTab === "general" && (
             <div className="stack-form">
-              <div className="settings-grid">
-                <section>
-                  <h3>{t("theme")}</h3>
-                  <Segmented
-                    value={themeMode}
-                    options={[
-                      { value: "system", label: t("system"), icon: <span aria-hidden>💻</span> },
-                      { value: "light", label: t("light"), icon: <span aria-hidden>☀️</span> },
-                      { value: "dark", label: t("dark"), icon: <span aria-hidden>🌙</span> },
-                    ]}
-                    onChange={(theme) => setThemeMode(theme as ThemePreference)}
-                  />
-                </section>
-                <section>
-                  <h3>{t("language")}</h3>
-                  <Segmented
-                    value={language}
-                    options={[
-                      { value: "system", label: t("system"), icon: <span aria-hidden>🌐</span> },
-                      { value: "es", label: "Español", icon: <span aria-hidden>🇪🇸</span> },
-                      { value: "en", label: "English", icon: <span aria-hidden>🇬🇧</span> },
-                    ]}
-                    onChange={(lang) => setLanguage(lang as Preferences["language"])}
-                  />
-                </section>
-              </div>
-
-              <section className="stack-form">
-                <h3>{t("vaultIcon")}</h3>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={() => setIconPickerOpen(true)}
-                  disabled={busy}
-                >
-                  <VaultGlyph icon={vaultStatus?.icon || DEFAULT_VAULT_ICON} size={18} />
+              <section>
+                <h3>{t("theme")}</h3>
+                <Segmented
+                  value={themeMode}
+                  options={[
+                    { value: "system", label: t("system"), icon: <Monitor size={14} aria-hidden /> },
+                    { value: "light", label: t("light"), icon: <Sun size={14} aria-hidden /> },
+                    { value: "dark", label: t("dark"), icon: <Moon size={14} aria-hidden /> },
+                  ]}
+                  onChange={(theme) => setThemeMode(theme as ThemePreference)}
+                />
+              </section>
+              <section>
+                <h3>{t("language")}</h3>
+                <Segmented
+                  value={language}
+                  options={[
+                    { value: "system", label: t("system"), icon: <Globe2 size={14} aria-hidden /> },
+                    { value: "es", label: "Español" },
+                    { value: "en", label: "English" },
+                  ]}
+                  onChange={(lang) => setLanguage(lang as Preferences["language"])}
+                />
+              </section>
+              <div className="card setting">
+                <span className="tile">
+                  <VaultGlyph icon={vaultIconKey} size={18} />
+                </span>
+                <div className="setting-text">
+                  <b>{t("vaultIcon")}</b>
+                  <span>{t("vaultIconHint")}</span>
+                </div>
+                <button className="secondary-button sm" type="button" onClick={() => setIconPickerOpen(true)} disabled={busy}>
                   {t("chooseIcon")}
                 </button>
-              </section>
+              </div>
             </div>
           )}
 
           {settingsTab === "sync" && (
             <section className="stack-form">
-              <h3>{t("sync")}</h3>
-              <Segmented
-                value={syncForm.protocol === "ftps" ? "ftps" : "ftp"}
-                options={[
-                  { value: "ftps", label: t("syncProtocolFtps"), icon: <span aria-hidden>🔒</span> },
-                  { value: "ftp", label: t("syncProtocolFtp"), icon: <span aria-hidden>🔓</span> },
-                ]}
-                onChange={(protocol) => setSyncForm({ ...syncForm, protocol })}
-              />
-              {syncForm.protocol !== "ftps" && <p className="sync-warning">{t("syncPlainWarning")}</p>}
-              <Toggle
-                label={t("syncEnabled")}
+              <SettingToggle
+                icon={<RefreshCw size={18} aria-hidden />}
+                title={t("syncEnabled")}
+                hint={t("syncEnabledHint")}
                 checked={syncForm.enabled}
                 onChange={(enabled) => setSyncForm({ ...syncForm, enabled })}
               />
-              <div className="settings-grid">
+              <section>
+                <h3>{t("syncProtocol")}</h3>
+                <Segmented
+                  value={syncForm.protocol === "ftps" ? "ftps" : "ftp"}
+                  options={[
+                    { value: "ftps", label: t("syncProtocolFtps"), icon: <ShieldCheck size={14} aria-hidden /> },
+                    { value: "ftp", label: t("syncProtocolFtp"), icon: <LockOpen size={14} aria-hidden /> },
+                  ]}
+                  onChange={(protocol) => setSyncForm({ ...syncForm, protocol })}
+                />
+              </section>
+              <div className="grid3">
                 <label>
                   <span>{t("syncHost")}</span>
                   <input
@@ -1222,6 +1733,8 @@ function App() {
                     onChange={(event) => setSyncForm({ ...syncForm, port: Number(event.target.value) })}
                   />
                 </label>
+              </div>
+              <div className="grid2">
                 <label>
                   <span>{t("syncUser")}</span>
                   <input
@@ -1230,15 +1743,14 @@ function App() {
                     autoComplete="off"
                   />
                 </label>
-                <label>
-                  <span>{t("syncPassword")}</span>
-                  <input
-                    type="password"
-                    value={syncForm.password}
-                    onChange={(event) => setSyncForm({ ...syncForm, password: event.target.value })}
-                    autoComplete="new-password"
-                  />
-                </label>
+                <PasswordInput
+                  label={t("syncPassword")}
+                  value={syncForm.password}
+                  onChange={(password) => setSyncForm({ ...syncForm, password })}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="grid2">
                 <label>
                   <span>{t("syncDir")}</span>
                   <input
@@ -1256,6 +1768,12 @@ function App() {
                   />
                 </label>
               </div>
+              {syncForm.protocol !== "ftps" && (
+                <p className="sync-warning">
+                  <AlertTriangle size={16} aria-hidden />
+                  <span>{t("syncPlainWarning")}</span>
+                </p>
+              )}
               <div className="sync-actions">
                 <button className="secondary-button" type="button" onClick={testSyncConnection} disabled={busy}>
                   <Globe2 size={18} aria-hidden />
@@ -1263,31 +1781,31 @@ function App() {
                 </button>
                 <button className="primary-button" type="button" onClick={saveSyncConfig} disabled={busy}>
                   <Save size={18} aria-hidden />
-                  {t("syncSaveConfig")}
+                  {t("save")}
                 </button>
                 <button
-                  className="secondary-button"
+                  className="ghost-button"
                   type="button"
                   onClick={manualSync}
-                  disabled={busy || syncState === "syncing" || !syncConfig?.enabled}
+                  disabled={busy || syncing || !syncConfig?.enabled}
                 >
                   <RefreshCw size={18} aria-hidden />
                   {t("syncNow")}
                 </button>
               </div>
               {syncConfig?.enabled && (
-                <button
-                  className="qr-link-card"
-                  type="button"
-                  onClick={() => setQrShowModalOpen(true)}
-                  disabled={busy}
-                >
-                  <QrCode size={22} aria-hidden />
-                  <div>
-                    <strong>{t("qrLinkDevice")}</strong>
+                <div className="card setting">
+                  <span className="tile">
+                    <QrCode size={18} aria-hidden />
+                  </span>
+                  <div className="setting-text">
+                    <b>{t("qrLinkDevice")}</b>
                     <span>{t("qrHowBody")}</span>
                   </div>
-                </button>
+                  <button className="secondary-button sm" type="button" onClick={() => setQrShowModalOpen(true)} disabled={busy}>
+                    {t("qrShowCode")}
+                  </button>
+                </div>
               )}
             </section>
           )}
@@ -1304,7 +1822,9 @@ function App() {
                 label={t("newPassword")}
                 value={changePasswordForm.newPassword}
                 onChange={(value) => setChangePasswordForm({ ...changePasswordForm, newPassword: value })}
-              />
+              >
+                <StrengthMeter level={passwordStrength(changePasswordForm.newPassword)} showLabel />
+              </PasswordInput>
               <PasswordInput
                 label={t("repeatNewPassword")}
                 value={changePasswordForm.repeatPassword}
@@ -1320,7 +1840,7 @@ function App() {
       )}
 
       {generatorOpen && (
-        <Modal title={t("generator")} onClose={closeGenerator} t={t}>
+        <Modal title={t("generator")} onClose={closeGenerator}>
           <div className="generator-layout">
             <label>
               <span>{t("length")}</span>
@@ -1334,10 +1854,12 @@ function App() {
                 }
               />
             </label>
-            <Toggle label={t("uppercase")} checked={generatorOptions.uppercase} onChange={(uppercase) => setGeneratorOptions({ ...generatorOptions, uppercase })} />
-            <Toggle label={t("lowercase")} checked={generatorOptions.lowercase} onChange={(lowercase) => setGeneratorOptions({ ...generatorOptions, lowercase })} />
-            <Toggle label={t("numbers")} checked={generatorOptions.numbers} onChange={(numbers) => setGeneratorOptions({ ...generatorOptions, numbers })} />
-            <Toggle label={t("symbols")} checked={generatorOptions.symbols} onChange={(symbols) => setGeneratorOptions({ ...generatorOptions, symbols })} />
+            <div className="card toggle-list">
+              <Toggle label={t("uppercase")} checked={generatorOptions.uppercase} onChange={(uppercase) => setGeneratorOptions({ ...generatorOptions, uppercase })} />
+              <Toggle label={t("lowercase")} checked={generatorOptions.lowercase} onChange={(lowercase) => setGeneratorOptions({ ...generatorOptions, lowercase })} />
+              <Toggle label={t("numbers")} checked={generatorOptions.numbers} onChange={(numbers) => setGeneratorOptions({ ...generatorOptions, numbers })} />
+              <Toggle label={t("symbols")} checked={generatorOptions.symbols} onChange={(symbols) => setGeneratorOptions({ ...generatorOptions, symbols })} />
+            </div>
             <button className="primary-button" type="button" onClick={generatePassword} disabled={busy}>
               <Sparkles size={18} aria-hidden />
               {t("generate")}
@@ -1355,7 +1877,7 @@ function App() {
       )}
 
       {importOpen && (
-        <Modal title={t("importLegacy")} onClose={closeImport} t={t}>
+        <Modal title={t("importLegacy")} eyebrow={t("navData")} onClose={closeImport}>
           <form className="stack-form" onSubmit={previewImport}>
             <FilePickerRow label={t("chooseFile")} path={legacyPath} onPick={chooseLegacyFile} t={t} />
             <PasswordInput
@@ -1363,26 +1885,31 @@ function App() {
               value={legacyPassword}
               onChange={setLegacyPassword}
             />
-            <button className="primary-button" type="submit" disabled={busy}>
+            <button className={importPreview ? "secondary-button" : "primary-button"} type="submit" disabled={busy}>
               <Import size={18} aria-hidden />
               {t("previewImport")}
             </button>
           </form>
           {importPreview && (
             <section className="import-preview">
-              <h3>
-                {t("importedEntries")}: {importPreview.count}
-              </h3>
-              {importPreview.count > importPreview.entries.length && (
-                <p className="empty-state">
-                  {t("showingFirst")} {importPreview.entries.length}.
-                </p>
-              )}
-              <div className="preview-list">
+              <div className="preview-head">
+                <h3>{t("importedEntries")}</h3>
+                <span className="pill line">
+                  {importPreview.count > importPreview.entries.length
+                    ? t("entriesShown", { shown: importPreview.entries.length, total: importPreview.count })
+                    : importPreview.count}
+                </span>
+              </div>
+              <div className="card preview-list">
                 {importPreview.entries.map((entry, index) => (
-                  <div key={`${entry.title}-${index}`}>
-                    <strong>{entry.title}</strong>
-                    <span>{entry.username || entry.url}</span>
+                  <div className="preview-row" key={`${entry.title}-${index}`}>
+                    <span className="av sm" style={hueStyle(entry.title)} aria-hidden>
+                      {initialOf(entry.title)}
+                    </span>
+                    <span className="tx">
+                      <b>{entry.title}</b>
+                      <span>{entry.username || entry.url}</span>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -1396,28 +1923,38 @@ function App() {
       )}
 
       {exportOpen && (
-        <Modal title={t("exportData")} onClose={() => setExportOpen(false)} t={t}>
+        <Modal title={t("exportData")} eyebrow={t("navData")} onClose={() => setExportOpen(false)}>
           <div className="export-options">
             <button className="export-option" type="button" onClick={exportCopy} disabled={busy}>
-              <FileLock2 size={22} aria-hidden />
+              <span className="tile lg">
+                <FileLock2 size={20} aria-hidden />
+              </span>
               <div>
                 <strong>{t("exportEncrypted")}</strong>
                 <span>{t("exportEncryptedHint")}</span>
               </div>
+              <span className="pill ok export-mark">{t("exportRecommended")}</span>
             </button>
             <button className="export-option danger" type="button" onClick={exportLegacyXml} disabled={busy}>
-              <FileText size={22} aria-hidden />
+              <span className="tile lg">
+                <FileText size={20} aria-hidden />
+              </span>
               <div>
                 <strong>{t("exportXmlPlain")}</strong>
                 <span>{t("exportXmlWarning")}</span>
               </div>
+              <span className="pill bad export-mark">{t("exportRisk")}</span>
             </button>
           </div>
+          <p className="hint-line">
+            <FolderOpen size={14} aria-hidden />
+            {isAndroid ? t("exportLocationAndroid") : t("exportLocationDesktop")}
+          </p>
         </Modal>
       )}
 
       {syncPrompt && (
-        <Modal title={t("syncNewerTitle")} onClose={() => setSyncPrompt(null)} t={t}>
+        <Modal title={t("syncNewerTitle")} eyebrow={t("tabSync")} onClose={() => setSyncPrompt(null)}>
           <p className="hint">{t("syncNewerMessage")}</p>
           <button
             className="primary-button full"
@@ -1435,16 +1972,17 @@ function App() {
       )}
 
       {iconPickerOpen && (
-        <Modal title={t("chooseIcon")} onClose={() => setIconPickerOpen(false)} t={t}>
+        <Modal title={t("chooseIcon")} onClose={() => setIconPickerOpen(false)}>
           <div className="icon-grid">
             {Object.keys(VAULT_ICONS).map((key) => (
               <button
                 key={key}
                 type="button"
-                className={`icon-choice ${(vaultStatus?.icon || DEFAULT_VAULT_ICON) === key ? "active" : ""}`}
+                className={`icon-choice ${vaultIconKey === key ? "active" : ""}`}
                 onClick={() => applyVaultIcon(key)}
                 disabled={busy}
-                aria-label={key}
+                aria-label={t(`vaultIcon_${key}`)}
+                title={t(`vaultIcon_${key}`)}
               >
                 <VaultGlyph icon={key} size={22} />
               </button>
@@ -1453,20 +1991,48 @@ function App() {
         </Modal>
       )}
 
+      {deletePromptOpen && (
+        <Modal title={draft.title || t("untitled")} onClose={() => setDeletePromptOpen(false)}>
+          <p className="hint">{t("deleteEntryConfirm")}</p>
+          <div className="modal-actions">
+            <button className="ghost-button" type="button" onClick={() => setDeletePromptOpen(false)}>
+              {t("cancel")}
+            </button>
+            <button
+              className="danger-button"
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                setDeletePromptOpen(false);
+                await deleteCurrentEntry();
+              }}
+            >
+              <Trash2 size={18} aria-hidden />
+              {t("delete")}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {removePromptPath !== null && (
-        <Modal title={vaultName(removePromptPath)} onClose={() => setRemovePromptPath(null)} t={t}>
+        <Modal title={vaultName(removePromptPath)} onClose={() => setRemovePromptPath(null)}>
           <p className="hint">{t("removeVaultConfirm")}</p>
-          <button
-            className="danger-button full"
-            type="button"
-            onClick={() => {
-              removeRecent(removePromptPath);
-              setRemovePromptPath(null);
-            }}
-          >
-            <Trash2 size={18} aria-hidden />
-            {t("removeFromList")}
-          </button>
+          <div className="modal-actions">
+            <button className="ghost-button" type="button" onClick={() => setRemovePromptPath(null)}>
+              {t("cancel")}
+            </button>
+            <button
+              className="danger-button"
+              type="button"
+              onClick={() => {
+                removeRecent(removePromptPath);
+                setRemovePromptPath(null);
+              }}
+            >
+              <Trash2 size={18} aria-hidden />
+              {t("removeFromList")}
+            </button>
+          </div>
         </Modal>
       )}
 
@@ -1490,11 +2056,11 @@ function App() {
       {qrLinkConfig && (
         <Modal
           title={t("qrLinkViaQr")}
+          eyebrow={t("tabSync")}
           onClose={() => {
             setQrLinkConfig(null);
             setQrLinkPassword("");
           }}
-          t={t}
         >
           <form className="stack-form" onSubmit={finishQrLink}>
             <div className="vault-chip">
@@ -1508,9 +2074,9 @@ function App() {
               onChange={setQrLinkPassword}
               autoFocus
             />
-            <div className="form-actions">
+            <div className="modal-actions">
               <button
-                className="secondary-button"
+                className="ghost-button"
                 type="button"
                 onClick={() => {
                   setQrLinkConfig(null);
@@ -1541,22 +2107,53 @@ function PasswordInput({
   value,
   onChange,
   autoFocus,
+  autoComplete = "current-password",
+  leadIcon,
+  error,
+  children,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   autoFocus?: boolean;
+  autoComplete?: string;
+  // Key icon before the field (unlock screen).
+  leadIcon?: boolean;
+  // Inline error: red border and text under the field, instead of a toast.
+  error?: string;
+  children?: ReactNode;
 }) {
+  const { t } = useTranslation();
+  const [visible, setVisible] = useState(false);
   return (
     <label>
       <span>{label}</span>
-      <input
-        type="password"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        autoFocus={autoFocus}
-        autoComplete="current-password"
-      />
+      <div className={`password-row${error ? " invalid" : ""}`}>
+        {leadIcon && <KeyRound className="lead" size={16} aria-hidden />}
+        <input
+          type={visible ? "text" : "password"}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          autoFocus={autoFocus}
+          autoComplete={autoComplete}
+          aria-invalid={error ? true : undefined}
+        />
+        <button
+          className="icon-button"
+          type="button"
+          onClick={() => setVisible((current) => !current)}
+          title={visible ? t("hidePassword") : t("showPassword")}
+          aria-label={visible ? t("hidePassword") : t("showPassword")}
+        >
+          {visible ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
+        </button>
+      </div>
+      {error && (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      )}
+      {children}
     </label>
   );
 }
@@ -1578,7 +2175,7 @@ function FilePickerRow({
       <div className="file-row">
         <input value={path} readOnly />
         <button className="icon-button" type="button" onClick={onPick} title={t("chooseVault")} aria-label={t("chooseVault")}>
-          <FolderOpen size={18} aria-hidden />
+          <FolderOpen size={16} aria-hidden />
         </button>
       </div>
     </label>
@@ -1597,7 +2194,33 @@ function Toggle({
   return (
     <label className="toggle-row">
       <span>{label}</span>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <input className="switch" type="checkbox" role="switch" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    </label>
+  );
+}
+
+// A setting rendered as a card: icon tile, title + description, switch at the right.
+function SettingToggle({
+  icon,
+  title,
+  hint,
+  checked,
+  onChange,
+}: {
+  icon: ReactNode;
+  title: string;
+  hint: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="card setting">
+      <span className="tile">{icon}</span>
+      <span className="setting-text">
+        <b>{title}</b>
+        <span>{hint}</span>
+      </span>
+      <input className="switch" type="checkbox" role="switch" checked={checked} onChange={(event) => onChange(event.target.checked)} />
     </label>
   );
 }
@@ -1608,7 +2231,7 @@ function Segmented({
   onChange,
 }: {
   value: string;
-  options: { value: string; label: string; icon: ReactNode }[];
+  options: { value: string; label: string; icon?: ReactNode }[];
   onChange: (value: string) => void;
 }) {
   return (
@@ -1628,39 +2251,56 @@ function Segmented({
   );
 }
 
-function Modal({
+// Left-rail navigation item (desktop).
+function NavButton({
+  icon,
+  label,
+  active,
+  trailing,
   title,
-  children,
-  onClose,
-  t,
+  collapsed,
+  disabled,
+  onClick,
 }: {
-  title: string;
-  children: ReactNode;
-  onClose: () => void;
-  t: (key: string) => string;
+  icon: ReactNode;
+  label: string;
+  active?: boolean;
+  trailing?: ReactNode;
+  title?: string;
+  // Icon-only rail: the label is hidden, so it moves to aria-label and the tooltip.
+  collapsed?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
 }) {
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
-      <section
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <header>
-          <h2>{title}</h2>
-          <button className="icon-button" type="button" onClick={onClose} aria-label={t("close")} title={t("close")}>
-            <X size={18} aria-hidden />
-          </button>
-        </header>
-        {children}
-        <footer className="modal-footer">
-          <button className="ghost-button" type="button" onClick={onClose}>
-            {t("close")}
-          </button>
-        </footer>
-      </section>
+    <button
+      className={`nav-item${active ? " active" : ""}`}
+      type="button"
+      aria-current={active ? "page" : undefined}
+      aria-label={collapsed ? label : undefined}
+      title={collapsed ? (title ? `${label}: ${title}` : label) : title}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {icon}
+      <span className="nav-text">{label}</span>
+      {trailing}
+    </button>
+  );
+}
+
+// Four-segment strength bar. An empty password renders nothing.
+function StrengthMeter({ level, showLabel }: { level: StrengthLevel; showLabel?: boolean }) {
+  const { t } = useTranslation();
+  if (level === 0) return null;
+  return (
+    <div className={`strength ${strengthTone(level)}`}>
+      <div className="meter" aria-hidden>
+        {[1, 2, 3, 4].map((step) => (
+          <i key={step} className={step <= level ? "on" : ""} />
+        ))}
+      </div>
+      {showLabel && <span className="meter-label">{t(strengthKey(level))}</span>}
     </div>
   );
 }

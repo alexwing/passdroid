@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Passdroid Next - Propuesta de diseño v3.1.4</title>
+<style>
+/* =========================================================
+   TOKENS  (mismos nombres que se propondrán en src/styles.css)
+   ========================================================= */
+:root{
+  color-scheme: light;
+  --font-ui: "Segoe UI Variable","Segoe UI",Inter,system-ui,-apple-system,Roboto,sans-serif;
+  --font-serif: "Palatino Linotype","Book Antiqua",Palatino,Georgia,"Noto Serif",serif;
+  --font-mono: "Cascadia Mono",Consolas,"SFMono-Regular",ui-monospace,monospace;
+
+  --bg:#f2f4f8; --s1:#ffffff; --s2:#f6f8fb; --s3:#e9eef5; --field:#ffffff;
+  --border:#d5dce8; --border-h:#b5c1d6;
+  --text:#14213a; --text2:#4a5b78; --muted:#66758f;
+
+  --accent:#eeb02c; --accent-h:#f5be45; --accent-ink:#1a2236;
+  --accent-text:#8f5a00; --accent-soft:#fdf1d4; --accent-glow:rgba(238,176,44,.30);
+  --ok:#0f8a5f; --ok-soft:#dcf5ea; --ok-glow:rgba(15,138,95,.22);
+  --danger:#c13b3b; --danger-soft:#fde8e6;
+  --warn-soft:#fff4d6; --warn-text:#7a5200;
+
+  --sh-1:0 1px 2px rgba(20,33,58,.07), inset 0 1px 0 rgba(255,255,255,.7);
+  --sh-2:0 8px 22px rgba(20,33,58,.10);
+  --sh-3:0 22px 55px rgba(20,33,58,.20);
+  --hl:inset 0 1px 0 rgba(255,255,255,.6);
+  --av-l:32%;
+
+  --r-sm:6px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:999px;
+  --ease:cubic-bezier(.2,.7,.2,1);
+
+  --page:#e3e8f0;
+  --page-glow:radial-gradient(900px 400px at 50% -80px, rgba(238,176,44,.18), transparent 70%);
+  --bezel:#0b1220;
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#0f1a2e; --s1:#16233b; --s2:#1d2d49; --s3:#263a5c; --field:#0d1628;
+  --border:#2c4166; --border-h:#3d5782;
+  --text:#eef2f9; --text2:#b4c2db; --muted:#8496b6;
+
+  --accent:#f0b73f; --accent-h:#f7c95f; --accent-ink:#1a2236;
+  --accent-text:#f0b73f; --accent-soft:rgba(240,183,63,.13); --accent-glow:rgba(240,183,63,.28);
+  --ok:#34d399; --ok-soft:rgba(52,211,153,.13); --ok-glow:rgba(52,211,153,.25);
+  --danger:#ff8a80; --danger-soft:rgba(255,138,128,.12);
+  --warn-soft:rgba(240,183,63,.12); --warn-text:#f3cf7a;
+
+  --sh-1:0 1px 2px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05);
+  --sh-2:0 10px 26px rgba(0,0,0,.35);
+  --sh-3:0 24px 60px rgba(0,0,0,.55);
+  --hl:inset 0 1px 0 rgba(255,255,255,.05);
+  --av-l:72%;
+
+  --page:#0a1222;
+  --page-glow:radial-gradient(900px 420px at 50% -100px, rgba(240,183,63,.10), transparent 70%);
+  --bezel:#05080f;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; font-family:var(--font-ui); font-size:14px; line-height:1.4;
+  color:var(--text); background:var(--page-glow), var(--page);
+  background-repeat:no-repeat; min-height:100vh;
+}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.i.sm{width:14px;height:14px} svg.i.lg{width:20px;height:20px} svg.i.xl{width:28px;height:28px}
+
+/* =========================================================
+   PÁGINA DE PRESENTACIÓN (no forma parte de la app)
+   ========================================================= */
+.page{max-width:1280px;margin:0 auto;padding:0 20px 80px}
+.pagebar{
+  position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;
+  padding:12px 20px;margin:0 -20px 28px;
+  background:color-mix(in srgb, var(--page) 86%, transparent);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--border);
+}
+.pagebar h1{font:400 20px var(--font-serif);margin:0;letter-spacing:.2px}
+.pagebar .tag{font-size:11px;color:var(--muted);letter-spacing:.4px}
+.pagebar .sp{flex:1}
+.themebtn{
+  display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:var(--r-full);
+  background:var(--s1);border:1px solid var(--border);box-shadow:var(--sh-1);font-weight:600;font-size:13px;
+  transition:border-color .15s, background .15s, transform .08s;
+}
+.themebtn:hover{border-color:var(--border-h);background:var(--s2)}
+.themebtn:active{transform:translateY(1px)}
+.sec{margin:44px 0 0}
+.sec-h{display:flex;align-items:baseline;gap:12px;margin:0 0 16px}
+.sec-h .k{font-size:11px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--accent-text)}
+.sec-h h2{font:400 24px var(--font-serif);margin:0}
+.sec-h p{margin:0;color:var(--muted);font-size:13px}
+.row{display:grid;gap:28px;align-items:start}
+.row.two{grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr))}
+.scroll{overflow-x:auto;padding:4px 2px 24px}
+.pair{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px}
+.sw{border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;background:var(--s1);box-shadow:var(--sh-1)}
+.sw i{display:block;height:44px}
+.sw b{display:block;font-size:11px;padding:6px 8px 0;font-weight:700}
+.sw span{display:block;font:11px var(--font-mono);color:var(--muted);padding:0 8px 7px}
+
+/* =========================================================
+   SISTEMA DE DISEÑO PASSDROID  (lo que se porta a styles.css)
+   ========================================================= */
+.eyebrow{font-size:10.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+.h-serif{font-family:var(--font-serif);font-weight:400;letter-spacing:.1px}
+
+/* Ventana (escritorio) */
+.win{
+  background:var(--bg);border:1px solid var(--border);border-radius:14px;overflow:hidden;
+  box-shadow:var(--sh-3);display:flex;flex-direction:column;position:relative;
+}
+.titlebar{
+  height:36px;flex:none;display:flex;align-items:center;gap:8px;padding:0 0 0 12px;
+  background:var(--s1);border-bottom:1px solid var(--border);font-size:12px;color:var(--text2);
+}
+.titlebar .logo{width:18px;height:18px;border-radius:5px}
+.titlebar .ttl{font-weight:600;color:var(--text)}
+.titlebar .sp{flex:1}
+.tb-btn{width:44px;height:36px;display:grid;place-items:center;border:0;background:transparent;color:var(--text2);transition:background .15s,color .15s}
+.tb-btn:hover{background:var(--s3);color:var(--text)}
+.tb-btn.close:hover{background:#e5484d;color:#fff}
+.tb-btn svg{width:14px;height:14px}
+
+/* Botones */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;
+  border-radius:var(--r-md);border:1px solid var(--border);background:var(--s2);color:var(--text);
+  font-weight:600;font-size:13.5px;box-shadow:var(--hl);
+  transition:background .15s,border-color .15s,transform .08s,box-shadow .15s;
+}
+.btn:hover{background:var(--s3);border-color:var(--border-h)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--accent);border-color:transparent;color:var(--accent-ink);font-weight:700;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 4px 14px var(--accent-glow)}
+.btn.primary:hover{background:var(--accent-h)}
+.btn.ghost{background:transparent;border-color:transparent;box-shadow:none;color:var(--text2)}
+.btn.ghost:hover{background:var(--s3);color:var(--text)}
+.btn.danger{background:transparent;color:var(--danger);border-color:color-mix(in srgb,var(--danger) 38%,transparent);box-shadow:none}
+.btn.danger:hover{background:var(--danger-soft);border-color:var(--danger)}
+.btn.block{width:100%}
+.btn.sm{height:32px;padding:0 12px;font-size:12.5px}
+.ibtn{
+  width:36px;height:36px;display:inline-grid;place-items:center;border-radius:var(--r-md);
+  border:1px solid transparent;background:transparent;color:var(--text2);transition:background .15s,color .15s,border-color .15s;
+}
+.ibtn:hover{background:var(--s3);color:var(--text)}
+.ibtn.bordered{border-color:var(--border);background:var(--s2)}
+.ibtn.round{border-radius:50%}
+.ibtn.danger:hover{background:var(--danger-soft);color:var(--danger)}
+
+/* Campos */
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field>label{font-size:11px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--muted)}
+.input{
+  display:flex;align-items:center;gap:6px;height:40px;padding:0 6px 0 12px;background:var(--field);
+  border:1px solid var(--border);border-radius:var(--r-md);transition:border-color .15s,box-shadow .15s;
+}
+.input:hover{border-color:var(--border-h)}
+.input:focus-within,.input.focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.input input{flex:1;min-width:0;height:100%;border:0;outline:0;background:transparent;font-size:14px}
+.input input::placeholder{color:var(--muted)}
+.input.mono input{font-family:var(--font-mono);letter-spacing:1px}
+.input>svg.lead{color:var(--muted)}
+.input .ibtn{width:30px;height:30px}
+.textarea{height:86px;align-items:flex-start;padding:10px 12px;color:var(--text2);font-size:13.5px;line-height:1.5}
+.meter{display:flex;gap:4px;margin-top:2px}
+.meter i{flex:1;height:4px;border-radius:2px;background:var(--s3)}
+.meter i.on{background:var(--ok)}
+.meter-l{font-size:11.5px;color:var(--ok);font-weight:600;margin-top:4px;display:flex;align-items:center;gap:6px}
+.meter.weak i.on{background:var(--danger)} .meter-l.weak{color:var(--danger)}
+
+/* Toggle */
+.toggle{width:40px;height:22px;border-radius:var(--r-full);background:var(--s3);border:1px solid var(--border-h);position:relative;flex:none;transition:background .25s,border-color .25s}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--text2);box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .25s var(--ease),background .25s}
+.toggle.on{background:var(--accent);border-color:transparent}
+.toggle.on::after{transform:translateX(18px);background:var(--accent-ink)}
+
+/* Segmentado */
+.seg{display:flex;padding:3px;gap:2px;background:var(--s2);border:1px solid var(--border);border-radius:10px}
+.seg button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;height:32px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:var(--text2);font-weight:600;font-size:13px;transition:background .15s,color .15s}
+.seg button:hover{color:var(--text)}
+.seg button.on{background:var(--s1);color:var(--text);box-shadow:var(--sh-1)}
+:root[data-theme="dark"] .seg button.on{background:var(--s3)}
+.seg button.on svg{color:var(--accent-text)}
+
+/* Tarjetas y filas */
+.card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--sh-1)}
+.setting{display:flex;align-items:center;gap:12px;padding:12px 14px;transition:border-color .15s}
+.setting:hover{border-color:var(--border-h)}
+.setting .tile{width:36px;height:36px;border-radius:10px;background:var(--accent-soft);color:var(--accent-text);display:grid;place-items:center;flex:none}
+.setting .t{flex:1;min-width:0}
+.setting .t b{display:block;font-size:13.5px;font-weight:600}
+.setting .t span{display:block;font-size:12px;color:var(--muted)}
+
+/* Badges / pills */
+.pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--r-full);font-size:11px;font-weight:600;background:var(--s3);color:var(--text2);border:1px solid transparent;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.warn{background:var(--warn-soft);color:var(--warn-text)}
+.pill.bad{background:var(--danger-soft);color:var(--danger)}
+.pill.line{background:transparent;border-color:var(--border);color:var(--muted)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}
+.dot.ok{background:var(--ok);box-shadow:0 0 0 3px var(--ok-glow)}
+.dot.warn{background:var(--accent)}
+.status{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
+
+/* Avatares de entrada */
+.av{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;flex:none;font:600 15px var(--font-serif);
+  background:hsl(var(--h) 55% 50% / .16);color:hsl(var(--h) 60% var(--av-l));border:1px solid hsl(var(--h) 55% 50% / .22)}
+.av.sq{width:40px;height:40px;border-radius:12px}
+
+/* Lista */
+.entry{display:flex;align-items:center;gap:12px;min-height:60px;padding:8px 12px 8px 14px;border-radius:10px;position:relative;
+  transition:background .15s,transform .15s var(--ease);cursor:pointer}
+.entry:hover{background:var(--s2)}
+.entry.sel{background:var(--s2);box-shadow:inset 0 0 0 1px var(--border)}
+.entry.sel::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:0 3px 3px 0;background:var(--accent);box-shadow:0 0 10px var(--accent-glow)}
+.entry .tx{flex:1;min-width:0}
+.entry .tx b{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.entry .tx span{display:block;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.entry .bd{display:flex;gap:6px}
+
+/* Barra lateral (vault escritorio) */
+.rail{width:224px;flex:none;background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 12px 12px}
+.vhead{display:flex;align-items:center;gap:10px;padding:0 6px 16px;border-bottom:1px solid var(--border);margin-bottom:12px}
+.vhead .vg{width:40px;height:40px;border-radius:12px;background:var(--accent-soft);color:var(--accent-text);display:grid;place-items:center;border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)}
+.vhead b{display:block;font:400 17px var(--font-serif);line-height:1.15}
+.vhead span{font-size:11.5px;color:var(--muted)}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav a{display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;border-radius:var(--r-md);color:var(--text2);font-weight:600;font-size:13.5px;text-decoration:none;position:relative;transition:background .15s,color .15s}
+.nav a:hover{background:var(--s2);color:var(--text)}
+.nav a.on{background:var(--accent-soft);color:var(--accent-text)}
+.nav a.on::before{content:"";position:absolute;left:-12px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--accent);box-shadow:0 0 10px var(--accent-glow)}
+.nav .cnt{margin-left:auto;font-size:11px;font-weight:700;color:var(--muted)}
+.nav .sync-dot{margin-left:auto}
+.nav-label{margin:14px 12px 6px}
+.rail .sp{flex:1}
+.rail .foot{border-top:1px solid var(--border);padding-top:12px;display:flex;flex-direction:column;gap:10px}
+
+/* Modal */
+.backdrop{position:absolute;inset:0;background:rgba(6,11,22,.55);backdrop-filter:blur(2px);display:grid;place-items:center;padding:20px;z-index:5}
+.modal{width:100%;background:var(--s1);border:1px solid var(--border);border-radius:var(--r-xl);box-shadow:var(--sh-3);display:flex;flex-direction:column;max-height:100%}
+.modal-h{display:flex;align-items:center;gap:12px;padding:18px 20px 0}
+.modal-h .k{display:block;margin-bottom:2px}
+.modal-h h3{margin:0;font:400 24px var(--font-serif)}
+.modal-h .sp{flex:1}
+.modal-b{padding:16px 20px 20px;display:flex;flex-direction:column;gap:14px;overflow:hidden}
+.tabs{display:flex;gap:4px;padding:0 20px;margin-top:14px;border-bottom:1px solid var(--border)}
+.tabs button{display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 12px;border:0;background:transparent;color:var(--muted);font-weight:600;font-size:13px;position:relative;transition:color .15s}
+.tabs button:hover{color:var(--text)}
+.tabs button.on{color:var(--text)}
+.tabs button.on::after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;border-radius:2px;background:var(--accent)}
+.tabs button.on svg{color:var(--accent-text)}
+.callout{display:flex;gap:10px;padding:10px 12px;border-radius:var(--r-md);font-size:12.5px;line-height:1.45;background:var(--warn-soft);color:var(--warn-text);border:1px solid color-mix(in srgb,var(--accent) 28%,transparent)}
+.callout svg{margin-top:1px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:2fr 1fr;gap:12px}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.opt{display:flex;align-items:center;gap:14px;padding:14px;border-radius:var(--r-lg);border:1px solid var(--border);background:var(--s2);text-align:left;width:100%;transition:border-color .15s,transform .15s var(--ease),background .15s}
+.opt:hover{border-color:var(--accent);transform:translateY(-2px);background:var(--s1)}
+.opt .tile{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-text);flex:none}
+.opt b{display:block;font-size:14px}
+.opt span{font-size:12.5px;color:var(--muted)}
+.opt.risk .tile{background:var(--danger-soft);color:var(--danger)}
+.opt.risk:hover{border-color:var(--danger)}
+
+/* Toast */
+.toast{
+  display:flex;align-items:flex-start;gap:12px;width:min(100%,380px);padding:12px 12px 14px 14px;border-radius:var(--r-lg);
+  background:var(--s2);border:1px solid var(--border);box-shadow:var(--sh-2);position:relative;overflow:hidden;
+}
+:root[data-theme="dark"] .toast{background:var(--s3)}
+.toast .ic{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex:none;background:var(--ok-soft);color:var(--ok)}
+.toast.err .ic{background:var(--danger-soft);color:var(--danger)}
+.toast.sync .ic{background:var(--accent-soft);color:var(--accent-text)}
+.toast b{display:block;font-size:13.5px}
+.toast p{margin:1px 0 0;font-size:12.5px;color:var(--text2)}
+.toast .x{margin-left:auto}
+.toast .bar{position:absolute;left:0;bottom:0;height:3px;width:62%;background:var(--ok)}
+.toast.err .bar{background:var(--danger)} .toast.sync .bar{background:var(--accent)}
+
+/* Pulse / knob */
+.knob-wrap{position:relative;width:104px;height:104px;margin:0 auto}
+.knob{
+  position:relative;z-index:1;width:104px;height:104px;border-radius:50%;display:grid;place-items:center;
+  background:radial-gradient(circle at 50% 30%, var(--s3), var(--s2));border:1px solid var(--border-h);color:var(--accent-text);
+  box-shadow:var(--sh-2),inset 0 1px 0 rgba(255,255,255,.08),0 0 0 6px color-mix(in srgb,var(--accent) 8%,transparent);
+  transition:all .4s var(--ease);
+}
+.knob.open{background:var(--ok);color:#fff;border-color:transparent;box-shadow:0 0 30px var(--ok-glow)}
+.ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--accent);opacity:0;animation:pulse 2.4s ease-out infinite}
+.syncing svg{animation:spin 1.2s linear infinite}
+.pulse-ring{position:relative}
+.pulse-ring::after{content:"";position:absolute;inset:-2px;border-radius:inherit;border:2px solid var(--accent);opacity:0;animation:pulse 2s ease-out infinite}
+
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes pulse{0%{transform:scale(1);opacity:.55}100%{transform:scale(1.7);opacity:0}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* =========================================================
+   PANTALLAS
+   ========================================================= */
+/* Start */
+.start-body{padding:28px 32px 20px;display:flex;flex-direction:column;gap:22px}
+.hero{display:flex;align-items:center;gap:16px}
+.hero .logo{width:64px;height:64px;border-radius:18px;box-shadow:var(--sh-2)}
+.hero h2{margin:2px 0 0;font:400 30px var(--font-serif);letter-spacing:.2px;line-height:1.1}
+.sechead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.recent{overflow:hidden}
+.recent .entry{border-radius:0;min-height:64px;padding-left:16px}
+.recent .entry+.entry{border-top:1px solid var(--border)}
+.recent .entry:hover{background:var(--s2)}
+.actions3{display:grid;grid-template-columns:1.15fr 1fr 1fr;gap:10px}
+.actions3 .btn{height:46px}
+.fineprint{display:flex;align-items:center;justify-content:center;gap:8px;font-size:11.5px;color:var(--muted);padding:0 0 2px}
+
+/* Unlock */
+.unlock-body{padding:36px 40px 28px;display:flex;flex-direction:column;align-items:center;gap:22px}
+.unlock-body h2{margin:0;font:400 28px var(--font-serif);text-align:center}
+.unlock-body .sub{margin:4px 0 0;text-align:center;color:var(--muted);font-size:12.5px;font-family:var(--font-mono)}
+.unlock-form{width:100%;max-width:340px;display:flex;flex-direction:column;gap:12px}
+.unlock-foot{width:100%;border-top:1px solid var(--border);padding-top:14px;display:flex;justify-content:center}
+
+/* Vault desktop */
+.vault{display:flex;height:640px}
+.listcol{width:320px;flex:none;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg)}
+.listhead{padding:16px 14px 10px;display:flex;flex-direction:column;gap:10px}
+.listhead .top{display:flex;align-items:baseline;justify-content:space-between;padding:0 4px}
+.listhead h3{margin:0;font:400 22px var(--font-serif)}
+.listscroll{flex:1;overflow:hidden;padding:2px 10px 10px;display:flex;flex-direction:column;gap:2px}
+.listfoot{padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.editor{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+.ed-head{display:flex;align-items:center;gap:14px;padding:20px 28px 16px;border-bottom:1px solid var(--border)}
+.ed-head h3{margin:2px 0 0;font:400 28px var(--font-serif);line-height:1.1}
+.ed-head .sp{flex:1}
+.ed-body{padding:22px 28px;display:grid;grid-template-columns:1fr 1fr;gap:16px 18px;align-content:start;flex:1}
+.ed-body .full{grid-column:1/-1}
+.ed-foot{display:flex;align-items:center;gap:10px;padding:14px 28px;border-top:1px solid var(--border);background:var(--s1)}
+.ed-foot .sp{flex:1}
+.ed-foot .meta{font-size:11.5px;color:var(--muted)}
+
+/* Móvil */
+.phone{width:372px;flex:none;border-radius:42px;background:var(--bezel);padding:9px;box-shadow:var(--sh-3)}
+.screen{height:760px;border-radius:34px;overflow:hidden;background:var(--bg);display:flex;flex-direction:column;position:relative}
+.sbar{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:12px;font-weight:600;flex:none}
+.sbar .r{display:flex;gap:5px;align-items:center}
+.mtop{display:flex;align-items:center;gap:10px;padding:8px 14px 10px;flex:none}
+.mtop .vg{width:36px;height:36px;border-radius:11px;background:var(--accent-soft);color:var(--accent-text);display:grid;place-items:center;border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)}
+.mtop h3{margin:0;font:400 20px var(--font-serif);line-height:1.1}
+.mtop .t{flex:1;min-width:0}
+.mtop .t span{font-size:11.5px;color:var(--muted)}
+.mtop.editor-top{padding-top:6px;border-bottom:1px solid var(--border);background:var(--s1)}
+.mtop.editor-top h3{font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msearch{padding:0 14px 8px;flex:none}
+.mlist{flex:1;overflow:hidden;padding:0 8px;display:flex;flex-direction:column;gap:2px}
+.fab{position:absolute;right:16px;bottom:88px;width:54px;height:54px;border-radius:18px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;border:0;box-shadow:0 8px 20px var(--accent-glow),0 2px 6px rgba(0,0,0,.25)}
+.tabbar{flex:none;display:flex;justify-content:space-around;padding:8px 6px calc(10px + 6px);background:var(--s1);border-top:1px solid var(--border)}
+.tabbar a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:600;color:var(--muted);min-width:64px;padding:4px 0;position:relative;text-decoration:none}
+.tabbar a.on{color:var(--accent-text)}
+.tabbar a.on::before{content:"";position:absolute;top:-9px;width:28px;height:3px;border-radius:0 0 3px 3px;background:var(--accent)}
+.mform{flex:1;overflow:hidden;padding:18px 16px;display:flex;flex-direction:column;gap:16px}
+.mactions{flex:none;display:flex;gap:10px;padding:12px 16px calc(14px + 6px);background:var(--s1);border-top:1px solid var(--border)}
+.mactions .btn{height:46px}
+.gesture{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);width:110px;height:4px;border-radius:2px;background:var(--text);opacity:.35}
+
+.stage{padding:24px;border-radius:var(--r-xl);border:1px dashed var(--border);display:flex;flex-direction:column;gap:14px;align-items:flex-start;background:color-mix(in srgb,var(--s1) 40%,transparent)}
+.cap{font-size:12px;color:var(--muted);margin:10px 4px 0}
+@media (max-width:640px){
+  .actions3{grid-template-columns:1fr}
+  .start-body{padding:22px 18px}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ SPRITE DE ICONOS (estilo lucide: 24px, trazo 2, extremos redondeados) ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-unlock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-square" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-file-text" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8M16 13H8M16 17H8"/></symbol>
+    <symbol id="i-file-lock" viewBox="0 0 24 24"><path d="M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v3"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><rect width="8" height="5" x="2" y="13" rx="1"/><path d="M8 13v-2a2 2 0 1 0-4 0v2"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-17.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></symbol>
+    <symbol id="i-battery" viewBox="0 0 24 24"><rect width="16" height="10" x="2" y="7" rx="2"/><path d="M22 11v2"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+
+    <!-- Logo de marca: caja fuerte dorada sobre azul marino (imita el icono real de la app) -->
+    <symbol id="logo" viewBox="0 0 64 64">
+      <rect width="64" height="64" rx="15" fill="#1b3a63"/>
+      <rect x="14" y="14" width="36" height="35" rx="8" fill="#e9b43f"/>
+      <rect x="14" y="14" width="36" height="9" rx="6" fill="#f3c65b"/>
+      <rect x="19" y="21" width="26" height="24" rx="5" fill="#e3ac38" stroke="#d09a2c"/>
+      <circle cx="29" cy="34" r="8.5" fill="#c9ccd2"/><circle cx="29" cy="34" r="6.8" fill="#272c36"/>
+      <circle cx="29" cy="34" r="3.4" fill="#454b57"/>
+      <rect x="44" y="26" width="3.5" height="6" rx="1.5" fill="#d79f30"/><rect x="44" y="38" width="3.5" height="6" rx="1.5" fill="#d79f30"/>
+      <rect x="19" y="49" width="7" height="3" rx="1.5" fill="#c58f26"/><rect x="38" y="49" width="7" height="3" rx="1.5" fill="#c58f26"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="page">
+
+  <div class="pagebar">
+    <svg class="i xl" style="width:30px;height:30px;stroke:none;border-radius:8px"><use href="#logo"/></svg>
+    <div>
+      <h1>Passdroid Next <span style="color:var(--accent-text)">v3.1.4</span> · propuesta de diseño</h1>
+      <div class="tag">Navy + ámbar del icono · superficies en 4 niveles · titulares serif · datos de ejemplo ficticios</div>
+    </div>
+    <div class="sp"></div>
+    <button class="themebtn" id="themeBtn" type="button" aria-label="Cambiar tema claro u oscuro">
+      <svg class="i sm" id="themeIc"><use href="#i-sun"/></svg><span id="themeTx">Modo claro</span>
+    </button>
+  </div>
+
+  <!-- ============ PALETA ============ -->
+  <section class="sec" style="margin-top:0">
+    <div class="sec-h"><span class="k">Base</span><h2>Paleta activa</h2><p>Cambia con el botón de arriba</p></div>
+    <div class="swatches">
+      <div class="sw"><i style="background:var(--bg)"></i><b>surface-0</b><span>fondo</span></div>
+      <div class="sw"><i style="background:var(--s1)"></i><b>surface-1</b><span>paneles</span></div>
+      <div class="sw"><i style="background:var(--s2)"></i><b>surface-2</b><span>reposo</span></div>
+      <div class="sw"><i style="background:var(--s3)"></i><b>surface-3</b><span>hover</span></div>
+      <div class="sw"><i style="background:var(--border)"></i><b>border</b><span>1px</span></div>
+      <div class="sw"><i style="background:var(--accent)"></i><b>accent</b><span>ámbar caja fuerte</span></div>
+      <div class="sw"><i style="background:var(--ok)"></i><b>ok</b><span>desbloqueado / sync</span></div>
+      <div class="sw"><i style="background:var(--danger)"></i><b>danger</b><span>destructivo</span></div>
+    </div>
+  </section>
+
+  <!-- ============ (a) + (b) ============ -->
+  <section class="sec">
+    <div class="sec-h"><span class="k">a · b</span><h2>Inicio y desbloqueo</h2><p>Jerarquía: vaults primero, acciones después</p></div>
+    <div class="row two">
+
+      <!-- (a) START -->
+      <div class="win" style="min-height:640px">
+        <div class="titlebar">
+          <svg class="logo i" style="stroke:none;width:18px;height:18px"><use href="#logo"/></svg>
+          <span class="ttl">Passdroid Next</span><span class="sp"></span>
+          <button class="tb-btn" aria-label="Minimizar"><svg class="i"><use href="#i-minus"/></svg></button>
+          <button class="tb-btn close" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="start-body">
+          <div class="hero">
+            <svg class="logo i" style="stroke:none;width:64px;height:64px;border-radius:18px"><use href="#logo"/></svg>
+            <div>
+              <div class="eyebrow">Gestor de contraseñas</div>
+              <h2>Passdroid Next</h2>
+            </div>
+          </div>
+
+          <div>
+            <div class="sechead">
+              <span class="eyebrow">Vaults disponibles</span>
+              <span class="pill line">3 recientes</span>
+            </div>
+            <div class="card recent">
+              <div class="entry">
+                <div class="av sq" style="--h:42"><svg class="i lg"><use href="#i-lock"/></svg></div>
+                <div class="tx"><b>Personal</b><span>…\Vaults\personal · hoy 09:41</span></div>
+                <span class="pill ok"><span class="dot ok"></span>Sync</span>
+                <button class="ibtn danger" aria-label="Quitar de recientes"><svg class="i sm"><use href="#i-trash"/></svg></button>
+                <svg class="i sm" style="color:var(--muted)"><use href="#i-chev-r"/></svg>
+              </div>
+              <div class="entry">
+                <div class="av sq" style="--h:200"><svg class="i lg"><use href="#i-key"/></svg></div>
+                <div class="tx"><b>Familia</b><span>…\Vaults\familia · ayer</span></div>
+                <span class="pill line">Local</span>
+                <button class="ibtn danger" aria-label="Quitar de recientes"><svg class="i sm"><use href="#i-trash"/></svg></button>
+                <svg class="i sm" style="color:var(--muted)"><use href="#i-chev-r"/></svg>
+              </div>
+              <div class="entry">
+                <div class="av sq" style="--h:280"><svg class="i lg"><use href="#i-cloud"/></svg></div>
+                <div class="tx"><b>Trabajo (demo)</b><span>…\Vaults\trabajo · hace 6 días</span></div>
+                <span class="pill warn">Sync pendiente</span>
+                <button class="ibtn danger" aria-label="Quitar de recientes"><svg class="i sm"><use href="#i-trash"/></svg></button>
+                <svg class="i sm" style="color:var(--muted)"><use href="#i-chev-r"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="actions3">
+            <button class="btn primary"><svg class="i"><use href="#i-plus"/></svg>Nuevo vault</button>
+            <button class="btn"><svg class="i"><use href="#i-folder"/></svg>Abrir fichero</button>
+            <button class="btn"><svg class="i"><use href="#i-qr"/></svg>Vincular por QR</button>
+          </div>
+
+          <div class="fineprint"><svg class="i sm"><use href="#i-shield"/></svg>Tu vault se cifra en este dispositivo antes de guardarse</div>
+        </div>
+      </div>
+
+      <!-- (b) UNLOCK -->
+      <div class="win" style="min-height:640px">
+        <div class="titlebar">
+          <svg class="logo i" style="stroke:none;width:18px;height:18px"><use href="#logo"/></svg>
+          <span class="ttl">Passdroid Next</span><span class="sp"></span>
+          <button class="tb-btn" aria-label="Minimizar"><svg class="i"><use href="#i-minus"/></svg></button>
+          <button class="tb-btn close" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="unlock-body" style="flex:1;justify-content:center;padding-top:20px">
+          <div class="knob-wrap" style="margin-top:6px">
+            <span class="ring"></span>
+            <div class="knob"><svg class="i" style="width:40px;height:40px;stroke-width:2.5"><use href="#i-lock"/></svg></div>
+          </div>
+          <div>
+            <div class="eyebrow" style="text-align:center">Vault bloqueado</div>
+            <h2 style="margin-top:6px">Personal</h2>
+            <p class="sub">…\Vaults\personal</p>
+          </div>
+          <div class="unlock-form">
+            <div class="field">
+              <label for="mp">Contraseña maestra</label>
+              <div class="input focus">
+                <svg class="i lead sm"><use href="#i-key"/></svg>
+                <input id="mp" type="password" value="contraseñademo" aria-label="Contraseña maestra">
+                <button class="ibtn" aria-label="Mostrar contraseña"><svg class="i sm"><use href="#i-eye"/></svg></button>
+              </div>
+            </div>
+            <button class="btn primary block" style="height:44px"><svg class="i"><use href="#i-unlock"/></svg>Desbloquear</button>
+            <button class="btn ghost block">Cancelar</button>
+          </div>
+          <div class="unlock-foot"><div class="status"><span class="dot warn"></span>Bloqueado · se cierra solo tras 5 min de inactividad</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ (c) VAULT ESCRITORIO ============ -->
+  <section class="sec">
+    <div class="sec-h"><span class="k">c</span><h2>Vault en escritorio</h2><p>Los 6 iconos de la cabecera pasan a una barra lateral con texto y estado</p></div>
+    <div class="scroll">
+      <div class="win" style="min-width:1120px">
+        <div class="titlebar">
+          <svg class="logo i" style="stroke:none;width:18px;height:18px"><use href="#logo"/></svg>
+          <span class="ttl">Passdroid Next</span>
+          <span class="pill line" style="margin-left:6px">Personal</span>
+          <span class="sp"></span>
+          <button class="tb-btn" aria-label="Fijar encima"><svg class="i"><use href="#i-pin"/></svg></button>
+          <button class="tb-btn" aria-label="Minimizar"><svg class="i"><use href="#i-minus"/></svg></button>
+          <button class="tb-btn" aria-label="Maximizar"><svg class="i"><use href="#i-square"/></svg></button>
+          <button class="tb-btn close" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="vault">
+          <!-- rail -->
+          <aside class="rail">
+            <div class="vhead">
+              <div class="vg"><svg class="i lg"><use href="#i-lock"/></svg></div>
+              <div><b>Personal</b><span>12 entradas</span></div>
+            </div>
+            <nav class="nav">
+              <a class="on" href="#"><svg class="i"><use href="#i-list"/></svg>Entradas<span class="cnt">12</span></a>
+              <a href="#"><svg class="i"><use href="#i-sparkles"/></svg>Generador</a>
+              <a href="#"><svg class="i"><use href="#i-refresh"/></svg>Sincronizar<span class="dot ok sync-dot"></span></a>
+            </nav>
+            <div class="eyebrow nav-label">Datos</div>
+            <nav class="nav">
+              <a href="#"><svg class="i"><use href="#i-download"/></svg>Importar</a>
+              <a href="#"><svg class="i"><use href="#i-upload"/></svg>Exportar</a>
+              <a href="#"><svg class="i"><use href="#i-settings"/></svg>Ajustes</a>
+            </nav>
+            <div class="sp"></div>
+            <div class="foot">
+              <div class="status"><span class="dot ok"></span>Sincronizado · hace 2 min</div>
+              <button class="btn block"><svg class="i"><use href="#i-lock"/></svg>Bloquear</button>
+            </div>
+          </aside>
+
+          <!-- lista -->
+          <section class="listcol">
+            <div class="listhead">
+              <div class="top"><h3>Entradas</h3><button class="btn primary sm"><svg class="i sm"><use href="#i-plus"/></svg>Nueva</button></div>
+              <div class="input"><svg class="i lead sm"><use href="#i-search"/></svg><input placeholder="Buscar entradas" aria-label="Buscar"></div>
+            </div>
+            <div class="listscroll">
+              <div class="entry"><div class="av" style="--h:215">C</div><div class="tx"><b>Banco Ejemplo</b><span>cliente-4821</span></div></div>
+              <div class="entry sel"><div class="av" style="--h:42">C</div><div class="tx"><b>Correo Norte</b><span>ana.demo@example.com</span></div></div>
+              <div class="entry"><div class="av" style="--h:340">N</div><div class="tx"><b>Nube Personal</b><span>nube.example.com</span></div><div class="bd"><span class="pill bad">Conflicto</span></div></div>
+              <div class="entry"><div class="av" style="--h:150">R</div><div class="tx"><b>Router de casa</b><span>192.168.0.1</span></div><div class="bd"><span class="pill warn">Débil</span></div></div>
+              <div class="entry"><div class="av" style="--h:265">S</div><div class="tx"><b>Streaming Plus</b><span>familia@example.com</span></div></div>
+              <div class="entry"><div class="av" style="--h:20">T</div><div class="tx"><b>Tienda Demo</b><span>compras@example.com</span></div></div>
+              <div class="entry"><div class="av" style="--h:180">H</div><div class="tx"><b>Hosting Beta</b><span>admin-demo</span></div></div>
+              <div class="entry"><div class="av" style="--h:310">F</div><div class="tx"><b>Foro Retro</b><span>pixel_demo</span></div></div>
+            </div>
+            <div class="listfoot"><span class="status">8 de 12 · A–Z</span><span class="status"><svg class="i sm"><use href="#i-shield"/></svg>Cifrado</span></div>
+          </section>
+
+          <!-- editor -->
+          <section class="editor">
+            <div class="ed-head">
+              <div class="av sq" style="--h:42;width:48px;height:48px;font-size:20px">C</div>
+              <div><div class="eyebrow">Editar entrada</div><h3>Correo Norte</h3></div>
+              <span class="sp"></span>
+              <span class="pill ok"><svg class="i sm" style="width:12px;height:12px"><use href="#i-shield"/></svg>Fuerte</span>
+            </div>
+            <div class="ed-body">
+              <div class="field full"><label>Título</label><div class="input"><input value="Correo Norte" aria-label="Título"></div></div>
+              <div class="field"><label>Usuario</label><div class="input"><input value="ana.demo@example.com" aria-label="Usuario"><button class="ibtn" aria-label="Copiar usuario"><svg class="i sm"><use href="#i-copy"/></svg></button></div></div>
+              <div class="field"><label>Contraseña</label>
+                <div class="input mono"><input type="password" value="K7#mP2vQ9xLw" aria-label="Contraseña"><button class="ibtn" aria-label="Mostrar"><svg class="i sm"><use href="#i-eye"/></svg></button><button class="ibtn" aria-label="Copiar contraseña"><svg class="i sm"><use href="#i-copy"/></svg></button><button class="ibtn" aria-label="Generar"><svg class="i sm"><use href="#i-sparkles"/></svg></button></div>
+                <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+              </div>
+              <div class="field full"><label>URL</label><div class="input"><svg class="i lead sm"><use href="#i-globe"/></svg><input value="https://correo.example.com" aria-label="URL"><button class="ibtn" aria-label="Abrir enlace"><svg class="i sm"><use href="#i-link"/></svg></button></div></div>
+              <div class="field full"><label>Notas</label><div class="input textarea">Cuenta principal de correo. Pregunta de recuperación guardada en papel.</div></div>
+            </div>
+            <div class="ed-foot">
+              <button class="btn primary"><svg class="i"><use href="#i-save"/></svg>Guardar</button>
+              <button class="btn ghost">Descartar</button>
+              <span class="sp"></span>
+              <span class="meta">Modificado hoy 09:12</span>
+              <button class="btn danger"><svg class="i"><use href="#i-trash"/></svg>Eliminar</button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ (d) MÓVIL ============ -->
+  <section class="sec">
+    <div class="sec-h"><span class="k">d</span><h2>Móvil: lista y editor a pantalla completa</h2><p>Barra inferior en vez de 6 iconos; editor con cabecera propia y barra de acciones fija</p></div>
+    <div class="scroll"><div class="pair">
+
+      <!-- lista móvil -->
+      <div>
+        <div class="phone"><div class="screen">
+          <div class="sbar"><span>9:41</span><span class="r"><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i sm"><use href="#i-battery"/></svg></span></div>
+          <div class="mtop">
+            <div class="vg"><svg class="i"><use href="#i-lock"/></svg></div>
+            <div class="t"><h3>Personal</h3><span><span class="dot ok" style="display:inline-block;margin-right:6px"></span>Sincronizado · 12 entradas</span></div>
+            <button class="ibtn round bordered pulse-ring" aria-label="Sincronizar"><svg class="i"><use href="#i-refresh"/></svg></button>
+            <button class="ibtn round bordered" aria-label="Bloquear"><svg class="i"><use href="#i-lock"/></svg></button>
+          </div>
+          <div class="msearch"><div class="input" style="height:44px"><svg class="i lead sm"><use href="#i-search"/></svg><input placeholder="Buscar entradas" aria-label="Buscar"></div></div>
+          <div class="mlist">
+            <div class="entry" style="min-height:64px"><div class="av" style="--h:215">B</div><div class="tx"><b>Banco Ejemplo</b><span>cliente-4821</span></div></div>
+            <div class="entry sel" style="min-height:64px"><div class="av" style="--h:42">C</div><div class="tx"><b>Correo Norte</b><span>ana.demo@example.com</span></div></div>
+            <div class="entry" style="min-height:64px"><div class="av" style="--h:340">N</div><div class="tx"><b>Nube Personal</b><span>nube.example.com</span></div><span class="pill bad">Conflicto</span></div>
+            <div class="entry" style="min-height:64px"><div class="av" style="--h:150">R</div><div class="tx"><b>Router de casa</b><span>192.168.0.1</span></div><span class="pill warn">Débil</span></div>
+            <div class="entry" style="min-height:64px"><div class="av" style="--h:265">S</div><div class="tx"><b>Streaming Plus</b><span>familia@example.com</span></div></div>
+            <div class="entry" style="min-height:64px"><div class="av" style="--h:20">T</div><div class="tx"><b>Tienda Demo</b><span>compras@example.com</span></div></div>
+            <div class="entry" style="min-height:64px"><div class="av" style="--h:180">H</div><div class="tx"><b>Hosting Beta</b><span>admin-demo</span></div></div>
+          </div>
+          <button class="fab" aria-label="Nueva entrada"><svg class="i lg" style="stroke-width:2.5"><use href="#i-plus"/></svg></button>
+          <nav class="tabbar">
+            <a class="on" href="#"><svg class="i"><use href="#i-list"/></svg>Entradas</a>
+            <a href="#"><svg class="i"><use href="#i-sparkles"/></svg>Generador</a>
+            <a href="#"><svg class="i"><use href="#i-upload"/></svg>Exportar</a>
+            <a href="#"><svg class="i"><use href="#i-settings"/></svg>Ajustes</a>
+          </nav>
+          <div class="gesture"></div>
+        </div></div>
+        <div class="cap">Lista · barra inferior (≤ 640 px)</div>
+      </div>
+
+      <!-- editor móvil -->
+      <div>
+        <div class="phone"><div class="screen">
+          <div class="sbar" style="background:var(--s1)"><span>9:41</span><span class="r"><svg class="i sm"><use href="#i-wifi"/></svg><svg class="i sm"><use href="#i-battery"/></svg></span></div>
+          <div class="mtop editor-top">
+            <button class="ibtn" aria-label="Volver"><svg class="i lg"><use href="#i-chev-l"/></svg></button>
+            <div class="t"><div class="eyebrow">Editar entrada</div><h3>Correo Norte</h3></div>
+            <button class="ibtn danger" aria-label="Eliminar"><svg class="i"><use href="#i-trash"/></svg></button>
+          </div>
+          <div class="mform">
+            <div class="field"><label>Título</label><div class="input" style="height:46px"><input value="Correo Norte" aria-label="Título"></div></div>
+            <div class="field"><label>Usuario</label><div class="input" style="height:46px"><input value="ana.demo@example.com" aria-label="Usuario"><button class="ibtn" aria-label="Copiar"><svg class="i sm"><use href="#i-copy"/></svg></button></div></div>
+            <div class="field"><label>Contraseña</label>
+              <div class="input mono" style="height:46px"><input type="password" value="K7#mP2vQ9xLw" aria-label="Contraseña"><button class="ibtn" aria-label="Mostrar"><svg class="i sm"><use href="#i-eye"/></svg></button><button class="ibtn" aria-label="Copiar"><svg class="i sm"><use href="#i-copy"/></svg></button></div>
+              <div class="meter"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div>
+              <div class="meter-l"><svg class="i sm" style="width:12px;height:12px"><use href="#i-shield"/></svg>Contraseña fuerte</div>
+            </div>
+            <div class="field"><label>URL</label><div class="input" style="height:46px"><input value="https://correo.example.com" aria-label="URL"><button class="ibtn" aria-label="Abrir"><svg class="i sm"><use href="#i-link"/></svg></button></div></div>
+            <div class="field"><label>Notas</label><div class="input textarea">Cuenta principal de correo.</div></div>
+          </div>
+          <div class="mactions">
+            <button class="btn ghost" style="flex:0 0 auto">Descartar</button>
+            <button class="btn primary" style="flex:1"><svg class="i"><use href="#i-save"/></svg>Guardar</button>
+          </div>
+          <div class="gesture"></div>
+        </div></div>
+        <div class="cap">Editor a pantalla completa · acciones fijas abajo</div>
+      </div>
+
+      <!-- (f) toasts -->
+      <div class="stage" style="flex:1;min-width:340px">
+        <div>
+          <div class="eyebrow">f</div>
+          <div class="h-serif" style="font-size:22px;margin-top:2px">Toasts</div>
+          <div style="color:var(--muted);font-size:12.5px;margin-top:2px">Abajo a la derecha en escritorio, arriba y seguros del teclado en móvil. Auto-cierre 5 s con barra de progreso; un solo texto.</div>
+        </div>
+        <div class="toast">
+          <div class="ic"><svg class="i"><use href="#i-check"/></svg></div>
+          <div><b>Contraseña copiada</b><p>Se borrará del portapapeles en 30 s.</p></div>
+          <button class="ibtn x" style="width:28px;height:28px" aria-label="Cerrar"><svg class="i sm"><use href="#i-x"/></svg></button>
+          <span class="bar"></span>
+        </div>
+        <div class="toast sync">
+          <div class="ic syncing pulse-ring"><svg class="i"><use href="#i-refresh"/></svg></div>
+          <div><b>Sincronizando…</b><p>Subiendo cambios a tu servidor FTPS.</p></div>
+          <span class="bar" style="width:34%"></span>
+        </div>
+        <div class="toast err">
+          <div class="ic"><svg class="i"><use href="#i-alert"/></svg></div>
+          <div><b>No se pudo sincronizar</b><p>El certificado del servidor no es de confianza.</p></div>
+          <button class="ibtn x" style="width:28px;height:28px" aria-label="Cerrar"><svg class="i sm"><use href="#i-x"/></svg></button>
+          <span class="bar" style="width:84%"></span>
+        </div>
+      </div>
+
+    </div></div>
+  </section>
+
+  <!-- ============ (e) AJUSTES + EXPORTAR ============ -->
+  <section class="sec">
+    <div class="sec-h"><span class="k">e</span><h2>Ajustes y modales</h2><p>Una sola X de cierre, pestañas con subrayado ámbar, iconos Lucide en lugar de emojis</p></div>
+    <div class="row two">
+
+      <div class="win" style="height:700px">
+        <div class="titlebar"><svg class="logo i" style="stroke:none;width:18px;height:18px"><use href="#logo"/></svg><span class="ttl">Passdroid Next</span><span class="sp"></span>
+          <button class="tb-btn close" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button></div>
+        <div class="backdrop" style="top:36px">
+          <div class="modal" style="max-width:520px">
+            <div class="modal-h">
+              <div><span class="eyebrow k">Passdroid</span><h3>Ajustes</h3></div><span class="sp"></span>
+              <button class="ibtn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="tabs" role="tablist">
+              <button role="tab" aria-selected="false"><svg class="i sm"><use href="#i-sun"/></svg>General</button>
+              <button role="tab" aria-selected="true" class="on"><svg class="i sm"><use href="#i-cloud"/></svg>Sync</button>
+              <button role="tab" aria-selected="false"><svg class="i sm"><use href="#i-shield"/></svg>Seguridad</button>
+            </div>
+            <div class="modal-b">
+              <div class="card setting">
+                <div class="tile"><svg class="i"><use href="#i-refresh"/></svg></div>
+                <div class="t"><b>Sincronización automática</b><span>Sube y baja cambios al abrir y al guardar</span></div>
+                <span class="toggle on" role="switch" aria-checked="true"></span>
+              </div>
+              <div class="field"><label>Protocolo</label>
+                <div class="seg"><button class="on"><svg class="i sm"><use href="#i-shield"/></svg>FTPS</button><button>FTP</button></div>
+              </div>
+              <div class="grid3">
+                <div class="field"><label>Servidor</label><div class="input"><input value="ftp.example.com" aria-label="Servidor"></div></div>
+                <div class="field"><label>Puerto</label><div class="input"><input value="21" aria-label="Puerto"></div></div>
+              </div>
+              <div class="grid2">
+                <div class="field"><label>Usuario</label><div class="input"><input value="demo" aria-label="Usuario"></div></div>
+                <div class="field"><label>Contraseña</label><div class="input"><input type="password" value="demodemo" aria-label="Contraseña"><button class="ibtn" aria-label="Mostrar"><svg class="i sm"><use href="#i-eye"/></svg></button></div></div>
+              </div>
+              <div class="callout"><svg class="i sm"><use href="#i-alert"/></svg><span>Con FTP sin cifrar tus datos viajan en texto plano. Usa FTPS siempre que puedas.</span></div>
+              <div class="actions">
+                <button class="btn">Probar conexión</button>
+                <button class="btn primary"><svg class="i"><use href="#i-save"/></svg>Guardar</button>
+                <button class="btn ghost"><svg class="i"><use href="#i-refresh"/></svg>Sincronizar ahora</button>
+              </div>
+              <div class="card setting">
+                <div class="tile"><svg class="i"><use href="#i-qr"/></svg></div>
+                <div class="t"><b>Vincular otro dispositivo</b><span>Muestra un QR con esta configuración</span></div>
+                <button class="btn sm">Mostrar QR</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:28px">
+        <!-- General tab compacta -->
+        <div class="modal" style="max-width:520px;animation:none">
+          <div class="modal-h"><div><span class="eyebrow k">Ajustes</span><h3>General</h3></div><span class="sp"></span><button class="ibtn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button></div>
+          <div class="modal-b">
+            <div class="field"><label>Tema</label>
+              <div class="seg"><button><svg class="i sm"><use href="#i-monitor"/></svg>Sistema</button><button><svg class="i sm"><use href="#i-sun"/></svg>Claro</button><button class="on"><svg class="i sm"><use href="#i-moon"/></svg>Oscuro</button></div></div>
+            <div class="field"><label>Idioma</label>
+              <div class="seg"><button><svg class="i sm"><use href="#i-globe"/></svg>Sistema</button><button class="on">Español</button><button>English</button></div></div>
+          </div>
+        </div>
+
+        <!-- Export -->
+        <div class="modal" style="max-width:520px;animation:none">
+          <div class="modal-h"><div><span class="eyebrow k">Datos</span><h3>Exportar vault</h3></div><span class="sp"></span><button class="ibtn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button></div>
+          <div class="modal-b">
+            <button class="opt"><div class="tile"><svg class="i lg"><use href="#i-file-lock"/></svg></div><div><b>Copia cifrada</b><span>Recomendada. Solo se abre con tu contraseña maestra.</span></div><svg class="i sm" style="margin-left:auto;color:var(--muted)"><use href="#i-chev-r"/></svg></button>
+            <button class="opt risk"><div class="tile"><svg class="i lg"><use href="#i-file-text"/></svg></div><div><b>XML en claro</b><span>Cualquiera con el fichero podrá leer tus contraseñas.</span></div><span class="pill bad" style="margin-left:auto">Riesgo</span></button>
+          </div>
+        </div>
+
+        <!-- QR -->
+        <div class="modal" style="max-width:520px;animation:none">
+          <div class="modal-h"><div><span class="eyebrow k">Sync</span><h3>Vincular dispositivo</h3></div><span class="sp"></span><button class="ibtn" aria-label="Cerrar"><svg class="i"><use href="#i-x"/></svg></button></div>
+          <div class="modal-b" style="flex-direction:row;gap:18px;align-items:center">
+            <div style="background:#fff;padding:10px;border-radius:12px;border:1px solid var(--border);flex:none">
+              <svg viewBox="0 0 21 21" width="124" height="124" shape-rendering="crispEdges" aria-label="Código QR de ejemplo">
+                <g fill="#14213a">
+                  <path d="M0 0h7v7H0zM14 0h7v7h-7zM0 14h7v7H0z"/>
+                </g>
+                <g fill="#fff"><path d="M1 1h5v5H1zM15 1h5v5h-5zM1 15h5v5H1z"/></g>
+                <g fill="#14213a"><path d="M2 2h3v3H2zM16 2h3v3h-3zM2 16h3v3H2z"/>
+                <path d="M8 1h2v2H8zM11 2h2v1h-2zM8 5h1v2H8zM10 4h2v2h-2zM12 6h1v2h-1zM9 8h2v1H9zM1 9h2v2H1zM4 8h2v2H4zM7 10h2v2H7zM11 9h3v2h-3zM15 8h2v2h-2zM18 9h2v2h-2zM13 12h2v2h-2zM16 12h3v1h-3zM9 13h2v3H9zM12 15h2v2h-2zM15 15h2v2h-2zM18 14h2v2h-2zM8 18h2v2H8zM11 18h3v2h-3zM16 18h2v2h-2zM19 18h1v3h-1z"/></g>
+              </svg>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div class="callout"><svg class="i sm"><use href="#i-shield"/></svg><span>Este QR contiene tus credenciales de sync. No lo compartas ni lo captures.</span></div>
+              <button class="btn sm"><svg class="i sm"><use href="#i-copy"/></svg>Copiar configuración</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p class="cap" style="margin-top:40px;text-align:center">Mockup estático de la propuesta. Nombres, correos y contraseñas son ficticios.</p>
+</div>
+
+<script>
+(function(){
+  var root=document.documentElement, btn=document.getElementById('themeBtn');
+  var ic=document.getElementById('themeIc'), tx=document.getElementById('themeTx');
+  function apply(t){
+    root.setAttribute('data-theme',t);
+    ic.querySelector('use').setAttribute('href', t==='dark' ? '#i-sun' : '#i-moon');
+    tx.textContent = t==='dark' ? 'Modo claro' : 'Modo oscuro';
+  }
+  var start='dark';
+  try{ if(window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) start='light'; }catch(e){}
+  apply(start);
+  btn.addEventListener('click',function(){ apply(root.getAttribute('data-theme')==='dark'?'light':'dark'); });
+  // pestañas y segmentados interactivos (solo demo visual)
+  document.querySelectorAll('.tabs, .seg').forEach(function(g){
+    g.addEventListener('click',function(e){
+      var b=e.target.closest('button'); if(!b||!g.contains(b))return;
+      g.querySelectorAll('button').forEach(function(x){x.classList.remove('on');x.setAttribute('aria-selected','false')});
+      b.classList.add('on'); b.setAttribute('aria-selected','true');
+    });
+  });
+  document.querySelectorAll('.toggle').forEach(function(t){
+    t.addEventListener('click',function(){t.classList.toggle('on');t.setAttribute('aria-checked',t.classList.contains('on'))});
+  });
+})();
+</script>
+</body>
+</html>

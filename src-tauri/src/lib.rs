@@ -1,4 +1,5 @@
 mod crypto;
+mod export;
 mod legacy;
 mod models;
 mod preferences;
@@ -15,6 +16,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(export::init())
         .manage(Mutex::new(VaultManager::default()))
         .invoke_handler(tauri::generate_handler![
             vault::create_vault,
@@ -31,6 +33,8 @@ pub fn run() {
             vault::save_vault,
             vault::export_vault_copy,
             vault::export_legacy_xml,
+            export::export_save_android,
+            export::verify_export,
             vault::set_vault_icon,
             vault::get_sync_config,
             vault::set_sync_config,

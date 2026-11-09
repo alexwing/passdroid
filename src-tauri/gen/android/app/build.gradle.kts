@@ -46,6 +46,9 @@ android {
     }
     buildTypes {
         getByName("debug") {
+            applicationIdSuffix = ".debug"
+            resValue("string", "app_name", "Passdroid Debug")
+            resValue("string", "main_activity_title", "Passdroid Debug")
             manifestPlaceholders["usesCleartextTraffic"] = "true"
             isDebuggable = true
             isJniDebuggable = true
