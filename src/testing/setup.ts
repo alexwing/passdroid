@@ -6,3 +6,9 @@ import { afterEach } from "vitest";
 afterEach(() => {
   cleanup();
 });
+
+// jsdom no implementa scrollIntoView. La UI lo llama al enfocar el formulario de
+// desbloqueo (para subir el botón con el teclado en Android): aquí basta un no-op.
+if (typeof Element.prototype.scrollIntoView !== "function") {
+  Element.prototype.scrollIntoView = () => {};
+}

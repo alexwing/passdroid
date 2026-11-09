@@ -289,11 +289,25 @@ describe("FakeBackend: icono, sync y preferencias", () => {
       language: "es",
       recentVaults: [],
       vaultIcons: {},
+      railCollapsed: false,
+      notesView: "edit",
     });
     await backend.invoke("save_preferences", {
-      preferences: { theme: "dark", language: "en", recentVaults: ["/a.pdvault"], vaultIcons: {} },
+      preferences: {
+        theme: "dark",
+        language: "en",
+        recentVaults: ["/a.pdvault"],
+        vaultIcons: {},
+        railCollapsed: true,
+        notesView: "preview",
+      },
     });
-    expect(backend.snapshot().preferences).toMatchObject({ theme: "dark", recentVaults: ["/a.pdvault"] });
+    expect(backend.snapshot().preferences).toMatchObject({
+      theme: "dark",
+      recentVaults: ["/a.pdvault"],
+      railCollapsed: true,
+      notesView: "preview",
+    });
   });
 
   it("is_android devuelve false", async () => {
@@ -421,6 +435,84 @@ describe("FakeBackend: IPC de plugins", () => {
     await expect(backend.invoke("plugin:dialog|save", { options: {} })).resolves.toBeNull();
     await backend.invoke("plugin:opener|open_url", { url: "https://github.com", with: undefined });
     expect(backend.snapshot().openedUrls).toEqual(["https://github.com"]);
+  });
+});
+
+describe("FakeBackend: verificación y guardado de exportaciones", () => {
+  const XML = '<?xml version="1.0" encoding="UTF-8"?>\n<passdroid version="1">\n</passdroid>\n';
+
+  it("verify_export acepta un vault exportado y un XML con la raíz passdroid", async () => {
+    const backend = newBackend([{ title: "GitHub" }]);
+    const vault = backend.fileText("/vaults/passdroid.pdvault") ?? "";
+
+    await expect(backend.invoke("verify_export", { kind: "vault", contents: vault })).resolves.toBeNull();
+    await expect(backend.invoke("verify_export", { kind: "xml", contents: XML })).resolves.toBeNull();
+  });
+
+  it("verify_export rechaza contenido vacío, basura, otro formato o una raíz XML ajena", async () => {
+    const backend = new FakeBackend();
+
+    await expect(backend.invoke("verify_export", { kind: "vault", contents: "  \n" })).rejects.toBe(
+      "export_verify_failed",
+    );
+    await expect(backend.invoke("verify_export", { kind: "vault", contents: "no es json" })).rejects.toBe(
+      "export_verify_failed",
+    );
+    await expect(
+      backend.invoke("verify_export", { kind: "vault", contents: '{"format":"otro"}' }),
+    ).rejects.toBe("export_verify_failed");
+    await expect(backend.invoke("verify_export", { kind: "xml", contents: "" })).rejects.toBe(
+      "export_verify_failed",
+    );
+    await expect(backend.invoke("verify_export", { kind: "xml", contents: "<otro/>" })).rejects.toBe(
+      "export_verify_failed",
+    );
+    await expect(backend.invoke("verify_export", { kind: "xml", contents: "<passdroid>" })).rejects.toBe(
+      "export_verify_failed",
+    );
+  });
+
+  it("export_save_android verifica primero y en escritorio falla con export_unsupported", async () => {
+    const backend = new FakeBackend();
+
+    // Contenido malo: falla por la verificación, igual que en Rust.
+    await expect(
+      backend.invoke("export_save_android", { kind: "xml", contents: "<otro/>" }),
+    ).rejects.toBe("export_verify_failed");
+    // Contenido bueno: en escritorio no hay guardado sin selector.
+    await expect(backend.invoke("export_save_android", { kind: "xml", contents: XML })).rejects.toBe(
+      "export_unsupported",
+    );
+  });
+});
+
+describe("FakeBackend: ventana y eventos (TitleBar)", () => {
+  it("maximizar alterna el estado y is_maximized lo refleja", async () => {
+    const backend = new FakeBackend();
+
+    await expect(backend.invoke("plugin:window|is_maximized")).resolves.toBe(false);
+    await backend.invoke("plugin:window|toggle_maximize");
+    await expect(backend.invoke("plugin:window|is_maximized")).resolves.toBe(true);
+    await backend.invoke("plugin:window|toggle_maximize");
+    await expect(backend.invoke("plugin:window|is_maximized")).resolves.toBe(false);
+  });
+
+  it("minimize y close se aceptan sin efectos observables en el estado", async () => {
+    const backend = new FakeBackend();
+
+    await expect(backend.invoke("plugin:window|minimize")).resolves.toBeNull();
+    await expect(backend.invoke("plugin:window|close")).resolves.toBeNull();
+    expect(backend.snapshot().unlocked).toBe(false);
+  });
+
+  it("listen devuelve un id numérico y unlisten se acepta", async () => {
+    const backend = new FakeBackend();
+
+    const first = await backend.invoke("plugin:event|listen", { event: "tauri://resize" });
+    const second = await backend.invoke("plugin:event|listen", { event: "tauri://resize" });
+    expect(typeof first).toBe("number");
+    expect(second).not.toBe(first);
+    await expect(backend.invoke("plugin:event|unlisten", { event: "tauri://resize", eventId: first })).resolves.toBeNull();
   });
 });
 

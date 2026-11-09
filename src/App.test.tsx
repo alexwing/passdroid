@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "./App";
@@ -41,17 +41,26 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Desmontar antes de quitar el mock: el cleanup de TitleBar llama a unlisten, que
+  // usa los internals que clearMocks borra.
+  cleanup();
   uninstallFakeIpc();
 });
 
-// Recorre el flujo de la UI real: Inicio -> "Abrir vault" (diálogo) -> desbloqueo.
+// Recorre el flujo de la UI real: Inicio -> "Abrir fichero" (diálogo) -> desbloqueo.
 async function unlockViaOpenDialog(user: ReturnType<typeof userEvent.setup>) {
   backend.setOpenDialogResult(VAULT_PATH);
-  await user.click(await screen.findByRole("button", { name: "Abrir vault" }));
+  await user.click(await screen.findByRole("button", { name: "Abrir fichero" }));
   await user.type(await screen.findByLabelText("Clave maestra"), MASTER);
   await user.click(screen.getByRole("button", { name: "Desbloquear" }));
   // Al desbloquear la app pasa a la pantalla del vault: aparece la lista.
   await screen.findByRole("button", { name: /GitHub/ });
+}
+
+// El botón Guardar vive en el pie del editor. Su "Eliminar" de cabecera es solo de
+// móvil (oculto en escritorio), así que el borrado se busca dentro de ese pie.
+function editorFooter(): HTMLElement {
+  return screen.getByRole("button", { name: "Guardar" }).closest("footer") as HTMLElement;
 }
 
 describe("Passdroid Next: flujo de la UI con IPC falsa", () => {
@@ -72,14 +81,16 @@ describe("Passdroid Next: flujo de la UI con IPC falsa", () => {
     renderApp();
     backend.setOpenDialogResult(VAULT_PATH);
 
-    await user.click(await screen.findByRole("button", { name: "Abrir vault" }));
+    await user.click(await screen.findByRole("button", { name: "Abrir fichero" }));
     await user.type(await screen.findByLabelText("Clave maestra"), "clave-equivocada");
     await user.click(screen.getByRole("button", { name: "Desbloquear" }));
 
+    // El error va inline bajo el campo (role=alert), no como toast.
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("La clave maestra no es correcta.");
-    // Seguimos en la pantalla de desbloqueo, sin entradas en pantalla.
-    expect(screen.getByLabelText("Clave maestra")).toBeInTheDocument();
+    // Seguimos en la pantalla de desbloqueo, sin entradas en pantalla. El texto del
+    // error forma parte del <label>, así que el nombre del campo se busca por regex.
+    expect(screen.getByLabelText(/Clave maestra/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /GitHub/ })).not.toBeInTheDocument();
     expect(backend.snapshot().unlocked).toBe(false);
   });
@@ -89,7 +100,8 @@ describe("Passdroid Next: flujo de la UI con IPC falsa", () => {
     renderApp();
     await unlockViaOpenDialog(user);
 
-    await user.click(screen.getByRole("button", { name: "Nueva entrada" }));
+    // "Nueva" es el botón de la cabecera de la lista en escritorio (el FAB "Nueva entrada" es de móvil).
+    await user.click(screen.getByRole("button", { name: "Nueva" }));
     await user.type(screen.getByLabelText("Título", { selector: "input" }), "Gmail");
     await user.type(screen.getByLabelText("Usuario", { selector: "input" }), "alex@gmail.com");
     await user.type(screen.getByLabelText("Contraseña", { selector: "input" }), "mail-secret-1");
@@ -127,13 +139,16 @@ describe("Passdroid Next: flujo de la UI con IPC falsa", () => {
     expect(edited?.username).toBe("alexwing");
   });
 
-  it("borra una entrada: desaparece de la lista y queda como tombstone en el vault", async () => {
+  it("borra una entrada tras confirmarlo: desaparece de la lista y queda como tombstone en el vault", async () => {
     const user = userEvent.setup();
     renderApp();
     await unlockViaOpenDialog(user);
 
     await user.click(screen.getByRole("button", { name: /Banco/ }));
-    await user.click(await screen.findByRole("button", { name: "Eliminar" }));
+    await user.click(within(editorFooter()).getByRole("button", { name: "Eliminar" }));
+    // Borrar pide confirmación en un diálogo cuyo título es el nombre de la entrada.
+    const dialog = await screen.findByRole("dialog", { name: "Banco" });
+    await user.click(within(dialog).getByRole("button", { name: "Eliminar" }));
 
     expect(await screen.findByText("1 entrada")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Banco/ })).not.toBeInTheDocument();

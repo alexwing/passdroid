@@ -3,10 +3,10 @@ import { expect, test, type Page } from "@playwright/test";
 // Mismo seed que e2e/app/main.tsx.
 const MASTER_PASSWORD = "clave-maestra-123";
 
-// Recorre el flujo real: Inicio -> "Abrir vault" (diálogo falso) -> desbloqueo.
+// Recorre el flujo real: Inicio -> "Abrir fichero" (diálogo falso) -> desbloqueo.
 async function openAndUnlock(page: Page, password = MASTER_PASSWORD) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Abrir vault" }).click();
+  await page.getByRole("button", { name: "Abrir fichero", exact: true }).click();
   await page.getByLabel("Clave maestra").fill(password);
   await page.getByRole("button", { name: "Desbloquear" }).click();
 }
@@ -43,7 +43,8 @@ test.describe("smoke: vault con IPC falsa", () => {
   test("crea una entrada nueva y aparece en la lista", async ({ page }) => {
     await openAndUnlock(page);
 
-    await page.getByRole("button", { name: "Nueva entrada" }).click();
+    // "Nueva" es el botón de la cabecera de la lista (en escritorio); el FAB "Nueva entrada" es de móvil.
+    await page.getByRole("button", { name: "Nueva", exact: true }).click();
     await field(page, "Título").fill("Gmail");
     await field(page, "Usuario").fill("alex@gmail.com");
     await field(page, "Contraseña").fill("mail-secret-1");

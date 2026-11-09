@@ -1,9 +1,10 @@
 /**
  * Backend falso en memoria para los tests de frontend.
  *
- * Implementa los 23 comandos de `src-tauri/src/lib.rs` y los comandos de plugin
- * que usa `src/App.tsx` (dialog, fs, path, opener), copiando la semántica de
- * `src-tauri/src/vault.rs`, `preferences.rs` y `crates/passdroid-core`.
+ * Implementa los 25 comandos de `src-tauri/src/lib.rs` y los comandos de plugin
+ * que usa la UI (dialog, fs, path, opener, y window/event para TitleBar), copiando
+ * la semántica de `src-tauri/src/vault.rs`, `preferences.rs`, `export.rs` y
+ * `crates/passdroid-core`.
  *
  * NO es criptografía real: el "fichero" .pdvault es JSON en claro con la
  * contraseña maestra. Basta para el contrato que ve la UI (contraseña correcta
@@ -15,6 +16,7 @@
 import { BaseDirectory } from "@tauri-apps/api/path";
 import type {
   EntriesSnapshot,
+  ExportKind,
   GeneratePasswordOptions,
   ImportPreview,
   Preferences,
@@ -107,7 +109,15 @@ interface Session {
 }
 
 function defaultPreferences(): Preferences {
-  return { theme: "system", language: "system", recentVaults: [], vaultIcons: {} };
+  // Mismos valores que Preferences::default en src-tauri/src/models.rs.
+  return {
+    theme: "system",
+    language: "system",
+    recentVaults: [],
+    vaultIcons: {},
+    railCollapsed: false,
+    notesView: "edit",
+  };
 }
 
 function clone<T>(value: T): T {
@@ -310,6 +320,39 @@ function startsWithAscii(bytes: Uint8Array, prefix: string): boolean {
   return true;
 }
 
+/**
+ * Réplica de export::verify: el contenido no puede estar vacío y debe ser del
+ * formato que dice su tipo. En el fake, el "vault" es el envelope JSON del fake
+ * (su `format`), no el de Rust (magic + payload).
+ */
+function verifyExport(kind: ExportKind, contents: string): null {
+  if (contents.trim() === "") throw "export_verify_failed";
+  if (kind === "vault") {
+    let parsed: { format?: unknown } | null;
+    try {
+      parsed = JSON.parse(contents) as { format?: unknown } | null;
+    } catch {
+      throw "export_verify_failed";
+    }
+    if (parsed?.format !== FAKE_VAULT_FORMAT) throw "export_verify_failed";
+    return null;
+  }
+  if (kind !== "xml") throw new Error(`FakeBackend: tipo de exportación desconocido: ${String(kind)}`);
+  const doc = new DOMParser().parseFromString(contents, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length > 0) throw "export_verify_failed";
+  if (doc.documentElement?.tagName !== "passdroid") throw "export_verify_failed";
+  return null;
+}
+
+/**
+ * Réplica de export_save_android en escritorio: primero verifica (como Rust) y
+ * después falla, porque el guardado sin selector solo existe en Android.
+ */
+function exportSaveAndroid(kind: ExportKind, contents: string): never {
+  verifyExport(kind, contents);
+  throw "export_unsupported";
+}
+
 export class FakeBackend {
   /** Registro de todas las llamadas recibidas, en orden. */
   readonly calls: { cmd: string; args: unknown }[] = [];
@@ -323,6 +366,7 @@ export class FakeBackend {
   private readonly openedUrls: string[] = [];
   private openDialogResult: string | null = null;
   private saveDialogResult: string | null = null;
+  private windowMaximized = false;
   private counter = 0;
 
   constructor(options: FakeBackendOptions = {}) {
@@ -427,6 +471,10 @@ export class FakeBackend {
         return this.serialize(this.requireSession());
       case "export_legacy_xml":
         return entriesToLegacyXml(this.visible(this.requireSession()), FAKE_APP_VERSION);
+      case "verify_export":
+        return verifyExport(a.kind as ExportKind, a.contents as string);
+      case "export_save_android":
+        return exportSaveAndroid(a.kind as ExportKind, a.contents as string);
       case "set_vault_icon":
         return this.setVaultIcon(a.icon as string);
       case "get_sync_config":
@@ -475,6 +523,21 @@ export class FakeBackend {
         return (a.paths as string[]).join("/").replace(/\/+/g, "/");
       case "plugin:opener|open_url":
         this.openedUrls.push(a.url as string);
+        return null;
+
+      // Comandos de ventana y de eventos que usa TitleBar (ver installFakeIpc: mockWindows).
+      case "plugin:window|is_maximized":
+        return this.windowMaximized;
+      case "plugin:window|toggle_maximize":
+        this.windowMaximized = !this.windowMaximized;
+        return null;
+      case "plugin:window|minimize":
+      case "plugin:window|close":
+        return null;
+      case "plugin:event|listen":
+        // mockIPC guarda el handler; el fake solo devuelve un id de evento.
+        return this.nextNumericId();
+      case "plugin:event|unlisten":
         return null;
 
       default:
@@ -756,5 +819,10 @@ export class FakeBackend {
   private nextId(prefix: string): string {
     this.counter += 1;
     return `fake-${prefix}-${this.counter}`;
+  }
+
+  private nextNumericId(): number {
+    this.counter += 1;
+    return this.counter;
   }
 }

@@ -4,7 +4,7 @@
  * normal (lo usará el smoke test de Playwright), porque solo toca
  * `window.__TAURI_INTERNALS__`.
  */
-import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
+import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { FakeBackend, type FakeInvokeOptions } from "./fakeBackend";
 
 type TauriInternals = {
@@ -18,6 +18,9 @@ type TauriInternals = {
 export function installFakeIpc(backend: FakeBackend = new FakeBackend()): FakeBackend {
   // mockIPC instala los internals (transformCallback, callbacks, etc.).
   mockIPC((cmd, args) => backend.invoke(cmd, args));
+  // Sin metadata, getCurrentWindow() lanza y TitleBar queda inerte. Con ella, sus
+  // llamadas (plugin:window|*, plugin:event|*) llegan al fake como cualquier IPC.
+  mockWindows("main");
 
   // mockIPC no reenvía el tercer argumento de invoke. plugin-fs manda la ruta de
   // writeTextFile en options.headers, así que el enrutado final va por aquí.

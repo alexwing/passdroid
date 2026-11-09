@@ -37,7 +37,7 @@ backend.seedVault({
     { title: "Banco", username: "alex", password: "bank-secret" },
   ],
 });
-// "Abrir vault" abre el diálogo nativo; aquí el diálogo devuelve el vault sembrado.
+// "Abrir fichero" abre el diálogo nativo; aquí el diálogo devuelve el vault sembrado.
 backend.setOpenDialogResult(VAULT_PATH);
 installFakeIpc(backend);
 window.__fakeBackend = backend;
