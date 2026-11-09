@@ -1,0 +1,34 @@
+[package]
+name = "passdroid-wasm"
+version = "0.1.0"
+description = "wasm-bindgen bindings over passdroid-core for the browser spike (Phase 0)"
+authors = ["Passdroid Next"]
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+passdroid-core = { path = "../passdroid-core" }
+serde = "1"
+serde_json = "1"
+wasm-bindgen = "=0.2.125"
+
+# Everything below is wasm32-only, so nothing leaks into the Tauri / Android
+# builds. passdroid-core pulls two getrandom majors (0.2 via rand_core, 0.4 via
+# uuid); each needs its own browser backend on wasm32-unknown-unknown.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+# uuid refuses to build on wasm32-unknown-unknown without an explicit RNG source;
+# reuse the getrandom 0.4 browser backend enabled above.
+uuid = { version = "1", features = ["rng-getrandom"] }
+# chrono's `clock` (default feature) reads Date.now() through js-sys on wasm32.
+chrono = { version = "0.4", features = ["wasmbind"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

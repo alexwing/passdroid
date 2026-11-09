@@ -1,0 +1,18 @@
+[package]
+name = "passdroid-core"
+version = "0.1.0"
+description = "Pure-Rust Passdroid vault core: envelope, crypto, merge and password generation (no I/O, no platform code)"
+authors = ["Passdroid Next"]
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+argon2 = "0.5"
+base64 = "0.22"
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+chrono = { version = "0.4", features = ["serde"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+zeroize = { version = "1", features = ["derive"] }

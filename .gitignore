@@ -32,3 +32,6 @@ key.properties
 *.sln
 *.sw?
 
+
+# passdroid-core build output (separate crate, no cargo workspace)
+crates/*/target

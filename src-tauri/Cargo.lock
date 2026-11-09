@@ -2564,18 +2564,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "passdroid-core"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "base64 0.22.1",
+ "chacha20poly1305",
+ "chrono",
+ "rand_core",
+ "serde",
+ "serde_json",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "passdroid-next"
 version = "3.1.3"
 dependencies = [
  "aes",
- "argon2",
  "base64 0.22.1",
  "cbc",
- "chacha20poly1305",
- "chrono",
  "crc32fast",
  "ecb",
  "hmac",
+ "passdroid-core",
  "rand_core",
  "roxmltree",
  "rusqlite",

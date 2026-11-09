@@ -1,0 +1,17 @@
+--- a/fn_decrypt.c	2026-11-09 16:21:12.213966600 +0100
++++ b/fn_decrypt.c	2026-11-09 16:21:12.292889200 +0100
+@@ -1,4 +1,4 @@
+-// fn_decrypt: abre una bóveda .fnvault de FamilyNotes en el Kindle.
++// fn_decrypt (copia para Passdroid): abre una bóveda .pdvault de Passdroid. Orden de campos de la cabecera idéntico al de FamilyNotes.
+ //   fn_decrypt bóveda.fnvault salida.json  (contraseña en la variable FN_PASSWORD o en --pass-file fichero)
+ //   fn_decrypt bóveda.fnvault salida.json --key clave.hex      (clave ya derivada: se salta Argon2, que es lo lento)
+ //   opción --save-key clave.hex  guarda la clave derivada (32 bytes en hex) para las siguientes sincronizaciones
+@@ -143,7 +143,7 @@
+         fprintf(stderr, "bóveda con formato inesperado\n");
+         return 3;
+     }
+-    if (strcmp(magic, "familynotes-vault-v1") || strcmp(kdf_alg, "Argon2id") || strcmp(cip_alg, "XChaCha20-Poly1305") ||
++    if (strcmp(magic, "passdroid-vault-v1") || strcmp(kdf_alg, "Argon2id") || strcmp(cip_alg, "XChaCha20-Poly1305") ||
+         atoi(outlen) != 32) {
+         fprintf(stderr, "bóveda no soportada (%s / %s / %s)\n", magic, kdf_alg, cip_alg);
+         return 3;
