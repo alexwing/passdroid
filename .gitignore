@@ -35,3 +35,9 @@ key.properties
 
 # passdroid-core build output (separate crate, no cargo workspace)
 crates/*/target
+
+# Playwright (e2e) reports and artifacts
+playwright-report/
+test-results/
+blob-report/
+*.tsbuildinfo
