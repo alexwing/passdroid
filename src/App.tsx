@@ -73,6 +73,7 @@ import { Toast } from "./components/Toast";
 import { TitleBar } from "./components/TitleBar";
 import { NotesBoundary } from "./components/NotesPlain";
 import { passwordStrength, type StrengthLevel } from "./utils/passwordStrength";
+import { VAULT_CHANGED_EVENT, VAULT_LOCK_EVENT, platform } from "./platform";
 
 // Markdown pulls in react-markdown + remark-gfm (~170 kB), so it loads on first preview.
 const NotesMarkdown = lazy(() => import("./components/NotesMarkdown").then((m) => ({ default: m.NotesMarkdown })));
@@ -197,6 +198,8 @@ const emptyEntry = (): VaultEntry => ({
 });
 
 function App() {
+  // Capabilities of the host (desktop/Android by default, Passdroid Web when it says so).
+  const caps = platform();
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
   const [screen, setScreen] = useState<Screen>("start");
   const [vaultPath, setVaultPath] = useState("");
@@ -276,8 +279,8 @@ function App() {
   // again — like the original Passdroid. The vault path is kept so the unlock
   // screen targets the same vault.
   useEffect(() => {
-    const handleHidden = () => {
-      if (!document.hidden || screen !== "vault" || suppressLock.current) return;
+    const lock = () => {
+      if (screen !== "vault" || suppressLock.current) return;
       Api.lockVault().catch(() => {});
       setEntries([]);
       setDraft(emptyEntry());
@@ -288,9 +291,45 @@ function App() {
       setUnlockError("");
       setScreen("unlock");
     };
+    const handleHidden = () => {
+      if (document.hidden) lock();
+    };
     document.addEventListener("visibilitychange", handleHidden);
-    return () => document.removeEventListener("visibilitychange", handleHidden);
-  }, [screen]);
+    // Web: the page can be closed or navigated away without a visibility change,
+    // and the server copy must not stay unlocked in a forgotten tab. A host can
+    // also ask for a lock explicitly (VAULT_LOCK_EVENT).
+    if (caps.web) {
+      window.addEventListener("pagehide", lock);
+      window.addEventListener(VAULT_LOCK_EVENT, lock);
+    }
+    return () => {
+      document.removeEventListener("visibilitychange", handleHidden);
+      window.removeEventListener("pagehide", lock);
+      window.removeEventListener(VAULT_LOCK_EVENT, lock);
+    };
+  }, [screen, caps.web]);
+
+  // Web: the vault can change outside this UI (another device saved it). Reload
+  // the list, keep the selection when that entry still exists, and drop any
+  // reload still in flight once the vault is locked or the screen changes.
+  useEffect(() => {
+    if (!caps.web || screen !== "vault") return;
+    let active = true;
+    const reload = () => {
+      Api.listEntries()
+        .then((list) => {
+          if (!active) return;
+          setEntries(list);
+          setSelectedId((prev) => (prev && list.some((entry) => entry.id === prev) ? prev : ""));
+        })
+        .catch(() => {});
+    };
+    window.addEventListener(VAULT_CHANGED_EVENT, reload);
+    return () => {
+      active = false;
+      window.removeEventListener(VAULT_CHANGED_EVENT, reload);
+    };
+  }, [caps.web, screen]);
 
   // Toasts auto-dismiss after 5s (and can be closed manually).
   useEffect(() => {
@@ -454,7 +493,7 @@ function App() {
   };
 
   const maybeAutoSync = () => {
-    if (syncConfig?.enabled) void autoSync();
+    if (caps.ftpSync && syncConfig?.enabled) void autoSync();
   };
 
   // Manual sync (top bar / settings): same work, but surfaces success/error.
@@ -634,20 +673,23 @@ function App() {
       setSelectedId("");
       setEditing(false);
       setScreen("vault");
-      const cfg = await Api.getSyncConfig().catch(() => null);
-      setSyncConfig(cfg);
-      setSyncForm(cfg ?? defaultSync);
-      setSyncBadge(vaultPath, cfg?.enabled ? "sync" : "local");
-      // On open, check the remote and offer to download it if it is newer,
-      // instead of silently pulling.
-      if (cfg?.enabled) {
-        Api.syncCheck()
-          .then((check) => {
-            if (check.remoteRevision != null && check.remoteRevision > check.localRevision) {
-              setSyncPrompt(check);
-            }
-          })
-          .catch(() => {});
+      // Hosts without FTP sync (web) never read or check the sync config here.
+      if (caps.ftpSync) {
+        const cfg = await Api.getSyncConfig().catch(() => null);
+        setSyncConfig(cfg);
+        setSyncForm(cfg ?? defaultSync);
+        setSyncBadge(vaultPath, cfg?.enabled ? "sync" : "local");
+        // On open, check the remote and offer to download it if it is newer,
+        // instead of silently pulling.
+        if (cfg?.enabled) {
+          Api.syncCheck()
+            .then((check) => {
+              if (check.remoteRevision != null && check.remoteRevision > check.localRevision) {
+                setSyncPrompt(check);
+              }
+            })
+            .catch(() => {});
+        }
       }
     }
   };
@@ -996,7 +1038,7 @@ function App() {
 
   // The custom title bar replaces the native one on desktop only. The user agent
   // check avoids showing it for a frame on Android before isAndroid resolves.
-  const showTitleBar = !isAndroid && !/android/i.test(navigator.userAgent);
+  const showTitleBar = caps.titleBar && !isAndroid && !/android/i.test(navigator.userAgent);
 
   const startNewEntry = () => {
     setSelectedId("");
@@ -1017,7 +1059,10 @@ function App() {
   const syncing = syncState === "syncing";
   const railCollapsed = preferences.railCollapsed === true;
   const notesView: NotesView = preferences.notesView === "preview" ? "preview" : "edit";
-  const syncStatus: { tone: string; text: string } = !syncConfig?.enabled
+  // Web saves to the server after every change, so the status says that instead.
+  const syncStatus: { tone: string; text: string } = caps.serverSync
+    ? { tone: "ok", text: t("syncStateServer") }
+    : !syncConfig?.enabled
     ? { tone: "", text: t("syncLocalOnly") }
     : syncing
       ? { tone: "warn", text: t("syncing") }
@@ -1068,7 +1113,7 @@ function App() {
                 </div>
                 <div className="card recent-list">
                   {preferences.recentVaults.map((path) => {
-                    const badge = vaultSyncBadges[path];
+                    const badge = caps.ftpSync ? vaultSyncBadges[path] : undefined;
                     return (
                       <div className="recent-row" key={path}>
                         <button className="recent-open" type="button" onClick={() => openRecent(path)}>
@@ -1088,15 +1133,17 @@ function App() {
                           {badge === "local" && <span className="pill line">{t("badgeLocal")}</span>}
                           {badge === "pending" && <span className="pill warn">{t("badgePending")}</span>}
                         </button>
-                        <button
-                          className="icon-button"
-                          type="button"
-                          onClick={() => setRemovePromptPath(path)}
-                          title={t("removeFromList")}
-                          aria-label={t("removeFromList")}
-                        >
-                          <Trash2 size={16} aria-hidden />
-                        </button>
+                        {!caps.web && (
+                          <button
+                            className="icon-button"
+                            type="button"
+                            onClick={() => setRemovePromptPath(path)}
+                            title={t("removeFromList")}
+                            aria-label={t("removeFromList")}
+                          >
+                            <Trash2 size={16} aria-hidden />
+                          </button>
+                        )}
                         <ChevronRight className="recent-chevron" size={16} aria-hidden />
                       </div>
                     );
@@ -1110,30 +1157,38 @@ function App() {
                 </span>
                 <h2>{t("startEmptyTitle")}</h2>
                 <p className="hint">{t("startEmptyBody")}</p>
-                <button className="primary-button" type="button" onClick={() => setCreateOpen(true)} disabled={busy}>
-                  <Plus size={18} aria-hidden />
-                  {t("newVault")}
-                </button>
+                {caps.createVault && (
+                  <button className="primary-button" type="button" onClick={() => setCreateOpen(true)} disabled={busy}>
+                    <Plus size={18} aria-hidden />
+                    {t("newVault")}
+                  </button>
+                )}
               </section>
             )}
 
-            <div className={`start-actions${hasRecents ? "" : " two"}`}>
-              {hasRecents && (
-                <button className="primary-button" type="button" onClick={() => setCreateOpen(true)} disabled={busy}>
-                  <Plus size={18} aria-hidden />
-                  {t("newVault")}
-                </button>
-              )}
-              <button className="secondary-button" type="button" onClick={chooseVaultForOpen} disabled={busy}>
-                {isAndroid ? <Import size={18} aria-hidden /> : <FolderOpen size={18} aria-hidden />}
-                {isAndroid ? t("importVault") : t("openFile")}
-              </button>
-              <button className="secondary-button" type="button" onClick={() => setQrScannerOpen(true)} disabled={busy}>
-                <QrCode size={18} aria-hidden />
-                {t("qrLinkShort")}
-              </button>
-            </div>
-            {isAndroid && <p className="hint center">{t("importAndroidHint")}</p>}
+            {(caps.createVault || caps.localFiles || caps.qrLink) && (
+              <div className={`start-actions${hasRecents ? "" : " two"}`}>
+                {hasRecents && caps.createVault && (
+                  <button className="primary-button" type="button" onClick={() => setCreateOpen(true)} disabled={busy}>
+                    <Plus size={18} aria-hidden />
+                    {t("newVault")}
+                  </button>
+                )}
+                {caps.localFiles && (
+                  <button className="secondary-button" type="button" onClick={chooseVaultForOpen} disabled={busy}>
+                    {isAndroid ? <Import size={18} aria-hidden /> : <FolderOpen size={18} aria-hidden />}
+                    {isAndroid ? t("importVault") : t("openFile")}
+                  </button>
+                )}
+                {caps.qrLink && (
+                  <button className="secondary-button" type="button" onClick={() => setQrScannerOpen(true)} disabled={busy}>
+                    <QrCode size={18} aria-hidden />
+                    {t("qrLinkShort")}
+                  </button>
+                )}
+              </div>
+            )}
+            {caps.localFiles && isAndroid && <p className="hint center">{t("importAndroidHint")}</p>}
 
             <p className="fineprint">
               <ShieldCheck size={14} aria-hidden />
@@ -1228,7 +1283,7 @@ function App() {
                 collapsed={railCollapsed}
                 onClick={() => setGeneratorOpen(true)}
               />
-              {syncConfig?.enabled && (
+              {caps.ftpSync && syncConfig?.enabled && (
                 <NavButton
                   icon={<RefreshCw size={16} className={syncing ? "spin" : ""} aria-hidden />}
                   label={t("navSync")}
@@ -1242,18 +1297,22 @@ function App() {
             </nav>
             <span className="eyebrow nav-label">{t("navData")}</span>
             <nav className="nav" aria-label={t("navData")}>
-              <NavButton
-                icon={<Download size={16} aria-hidden />}
-                label={t("navImport")}
-                collapsed={railCollapsed}
-                onClick={() => setImportOpen(true)}
-              />
-              <NavButton
-                icon={<Upload size={16} aria-hidden />}
-                label={t("exportData")}
-                collapsed={railCollapsed}
-                onClick={() => setExportOpen(true)}
-              />
+              {caps.importLegacy && (
+                <NavButton
+                  icon={<Download size={16} aria-hidden />}
+                  label={t("navImport")}
+                  collapsed={railCollapsed}
+                  onClick={() => setImportOpen(true)}
+                />
+              )}
+              {caps.exportFiles && (
+                <NavButton
+                  icon={<Upload size={16} aria-hidden />}
+                  label={t("exportData")}
+                  collapsed={railCollapsed}
+                  onClick={() => setExportOpen(true)}
+                />
+              )}
               <NavButton
                 icon={<Settings size={16} aria-hidden />}
                 label={t("settings")}
@@ -1298,7 +1357,7 @@ function App() {
                   {syncStatus.text} · {entryCount}
                 </div>
               </div>
-              {syncConfig?.enabled && (
+              {caps.ftpSync && syncConfig?.enabled && (
                 <button
                   className={`icon-button round sync-button ${syncState}${syncing ? " pulse-ring" : ""}`}
                   type="button"
@@ -1564,14 +1623,18 @@ function App() {
               <Sparkles size={20} aria-hidden />
               {t("generator")}
             </button>
-            <button className="tab" type="button" onClick={() => setImportOpen(true)}>
-              <Download size={20} aria-hidden />
-              {t("navImport")}
-            </button>
-            <button className="tab" type="button" onClick={() => setExportOpen(true)}>
-              <Upload size={20} aria-hidden />
-              {t("exportData")}
-            </button>
+            {caps.importLegacy && (
+              <button className="tab" type="button" onClick={() => setImportOpen(true)}>
+                <Download size={20} aria-hidden />
+                {t("navImport")}
+              </button>
+            )}
+            {caps.exportFiles && (
+              <button className="tab" type="button" onClick={() => setExportOpen(true)}>
+                <Upload size={20} aria-hidden />
+                {t("exportData")}
+              </button>
+            )}
             <button className="tab" type="button" onClick={() => setSettingsOpen(true)}>
               <Settings size={20} aria-hidden />
               {t("settings")}
@@ -1584,7 +1647,7 @@ function App() {
         <Toast notice={notice} onClose={() => setNotice(null)} />
       )}
 
-      {createOpen && (
+      {caps.createVault && createOpen && (
         <Modal title={t("newVault")} eyebrow={t("appName")} onClose={closeCreate}>
           <form className="stack-form" onSubmit={createVault}>
             {isAndroid ? (
@@ -1631,26 +1694,30 @@ function App() {
               <Sliders size={16} aria-hidden />
               <span>{t("tabGeneral")}</span>
             </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={settingsTab === "sync"}
-              className={`settings-tab ${settingsTab === "sync" ? "active" : ""}`}
-              onClick={() => setSettingsTab("sync")}
-            >
-              <Server size={16} aria-hidden />
-              <span>{t("tabSync")}</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={settingsTab === "security"}
-              className={`settings-tab ${settingsTab === "security" ? "active" : ""}`}
-              onClick={() => setSettingsTab("security")}
-            >
-              <ShieldCheck size={16} aria-hidden />
-              <span>{t("tabSecurity")}</span>
-            </button>
+            {caps.ftpSync && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={settingsTab === "sync"}
+                className={`settings-tab ${settingsTab === "sync" ? "active" : ""}`}
+                onClick={() => setSettingsTab("sync")}
+              >
+                <Server size={16} aria-hidden />
+                <span>{t("tabSync")}</span>
+              </button>
+            )}
+            {caps.changeMasterPassword && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={settingsTab === "security"}
+                className={`settings-tab ${settingsTab === "security" ? "active" : ""}`}
+                onClick={() => setSettingsTab("security")}
+              >
+                <ShieldCheck size={16} aria-hidden />
+                <span>{t("tabSecurity")}</span>
+              </button>
+            )}
           </div>
 
           {settingsTab === "general" && (
@@ -1679,22 +1746,24 @@ function App() {
                   onChange={(lang) => setLanguage(lang as Preferences["language"])}
                 />
               </section>
-              <div className="card setting">
-                <span className="tile">
-                  <VaultGlyph icon={vaultIconKey} size={18} />
-                </span>
-                <div className="setting-text">
-                  <b>{t("vaultIcon")}</b>
-                  <span>{t("vaultIconHint")}</span>
+              {caps.vaultIcon && (
+                <div className="card setting">
+                  <span className="tile">
+                    <VaultGlyph icon={vaultIconKey} size={18} />
+                  </span>
+                  <div className="setting-text">
+                    <b>{t("vaultIcon")}</b>
+                    <span>{t("vaultIconHint")}</span>
+                  </div>
+                  <button className="secondary-button sm" type="button" onClick={() => setIconPickerOpen(true)} disabled={busy}>
+                    {t("chooseIcon")}
+                  </button>
                 </div>
-                <button className="secondary-button sm" type="button" onClick={() => setIconPickerOpen(true)} disabled={busy}>
-                  {t("chooseIcon")}
-                </button>
-              </div>
+              )}
             </div>
           )}
 
-          {settingsTab === "sync" && (
+          {caps.ftpSync && settingsTab === "sync" && (
             <section className="stack-form">
               <SettingToggle
                 icon={<RefreshCw size={18} aria-hidden />}
@@ -1810,7 +1879,7 @@ function App() {
             </section>
           )}
 
-          {settingsTab === "security" && (
+          {caps.changeMasterPassword && settingsTab === "security" && (
             <form className="stack-form" onSubmit={changeMasterPassword}>
               <h3>{t("changePassword")}</h3>
               <PasswordInput
@@ -1876,7 +1945,7 @@ function App() {
         </Modal>
       )}
 
-      {importOpen && (
+      {caps.importLegacy && importOpen && (
         <Modal title={t("importLegacy")} eyebrow={t("navData")} onClose={closeImport}>
           <form className="stack-form" onSubmit={previewImport}>
             <FilePickerRow label={t("chooseFile")} path={legacyPath} onPick={chooseLegacyFile} t={t} />
@@ -1922,7 +1991,7 @@ function App() {
         </Modal>
       )}
 
-      {exportOpen && (
+      {caps.exportFiles && exportOpen && (
         <Modal title={t("exportData")} eyebrow={t("navData")} onClose={() => setExportOpen(false)}>
           <div className="export-options">
             <button className="export-option" type="button" onClick={exportCopy} disabled={busy}>
@@ -1953,7 +2022,7 @@ function App() {
         </Modal>
       )}
 
-      {syncPrompt && (
+      {caps.ftpSync && syncPrompt && (
         <Modal title={t("syncNewerTitle")} eyebrow={t("tabSync")} onClose={() => setSyncPrompt(null)}>
           <p className="hint">{t("syncNewerMessage")}</p>
           <button
@@ -1971,7 +2040,7 @@ function App() {
         </Modal>
       )}
 
-      {iconPickerOpen && (
+      {caps.vaultIcon && iconPickerOpen && (
         <Modal title={t("chooseIcon")} onClose={() => setIconPickerOpen(false)}>
           <div className="icon-grid">
             {Object.keys(VAULT_ICONS).map((key) => (
@@ -2037,14 +2106,16 @@ function App() {
       )}
 
       {/* QR Scanner Modal */}
-      <QrCameraScanner
-        isOpen={qrScannerOpen}
-        onScan={handleQrScan}
-        onClose={() => setQrScannerOpen(false)}
-      />
+      {caps.qrLink && (
+        <QrCameraScanner
+          isOpen={qrScannerOpen}
+          onScan={handleQrScan}
+          onClose={() => setQrScannerOpen(false)}
+        />
+      )}
 
-      {/* QR Show Modal (for sharing FTP config) */}
-      {syncConfig && (
+      {/* QR Show Modal (for sharing FTP config). Never on hosts without FTP sync: the QR carries the FTP password. */}
+      {caps.qrLink && caps.ftpSync && syncConfig && (
         <QrVaultModal
           isOpen={qrShowModalOpen}
           syncConfig={syncConfig}
@@ -2053,7 +2124,7 @@ function App() {
       )}
 
       {/* QR Link Password Prompt Modal */}
-      {qrLinkConfig && (
+      {caps.qrLink && qrLinkConfig && (
         <Modal
           title={t("qrLinkViaQr")}
           eyebrow={t("tabSync")}
