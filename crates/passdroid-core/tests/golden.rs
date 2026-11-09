@@ -121,3 +121,49 @@ fn desktop_fixture_opens_with_core() {
 fn android_fixture_opens_with_core() {
     check_fixture("android-32mib.pdvault", "expected-android.json", 32 * 1024);
 }
+
+/// Created on a real Android device (POCO X7 Pro, debug build of branch
+/// `fix/android-export`), exported through the fixed MediaStore path. Unlike the
+/// synthetic `android-32mib.pdvault`, the Android KDF params, ids and timestamps
+/// come straight from the Android build. No icon or sync settings were set.
+#[test]
+fn android_real_fixture_opens_with_core() {
+    let contents = read_fixture("android-real-32mib.pdvault");
+    let expected: serde_json::Value =
+        serde_json::from_str(&read_fixture("expected-android-real.json")).unwrap();
+
+    let envelope = parse_envelope(&contents).unwrap();
+    let header = &envelope.header;
+    assert_eq!(header.magic, VAULT_MAGIC);
+    assert_eq!(header.version, 1);
+    assert_eq!(header.kdf.algorithm, "Argon2id");
+    assert_eq!(header.kdf.memory_kib, 32 * 1024);
+    assert_eq!(header.kdf.iterations, 3);
+    assert_eq!(header.kdf.parallelism, 1);
+    assert_eq!(header.kdf.output_len, 32);
+    assert_eq!(header.cipher.algorithm, "XChaCha20-Poly1305");
+
+    let opened = open_envelope(&contents, TEST_PASSWORD).unwrap();
+    assert_eq!(serde_json::to_value(&opened.data).unwrap(), expected);
+    let titles: Vec<&str> = opened.data.entries.iter().map(|e| e.title.as_str()).collect();
+    assert_eq!(titles, ["Café 😅 Ñandú", "Fixture Login", "Minimal"]);
+    assert_eq!(opened.data.entries[0].notes, "Notas café mañana");
+    assert_eq!(opened.data.entries[1].username, "fixture-user");
+    assert_eq!(opened.data.entries[1].url, "https://example.invalid/login");
+    assert_eq!(visible_entries(&opened.data.entries).len(), 3);
+    assert_eq!(vault_status(&opened.header, &opened.data).entry_count, 3);
+
+    assert_eq!(
+        open_envelope(&contents, "not-the-password").err(),
+        Some("master_password_incorrect".to_string())
+    );
+
+    // Reseal + reopen round-trips with the Android params kept.
+    let mut opened = opened;
+    let resealed = reseal_envelope(&mut opened.header, &opened.data, &opened.key[..]).unwrap();
+    assert_ne!(resealed, contents);
+    let reopened = open_envelope(&resealed, TEST_PASSWORD).unwrap();
+    assert_eq!(reopened.header.kdf.memory_kib, 32 * 1024);
+    assert_ne!(reopened.header.nonce, envelope.header.nonce);
+    assert_eq!(serde_json::to_value(&reopened.data).unwrap(), expected);
+}

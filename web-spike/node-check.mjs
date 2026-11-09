@@ -29,6 +29,7 @@ console.log(`variant: ${variant}, node ${process.version}`);
 for (const [label, vaultFile, expectedFile] of [
   ['desktop-64mib', 'desktop-64mib.pdvault', 'expected-desktop.json'],
   ['android-32mib', 'android-32mib.pdvault', 'expected-android.json'],
+  ['android-real-32mib', 'android-real-32mib.pdvault', 'expected-android-real.json'],
 ]) {
   const vault = fixtures(vaultFile);
   const expected = JSON.parse(fixtures(expectedFile));

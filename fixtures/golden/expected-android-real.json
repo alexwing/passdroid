@@ -1,0 +1,43 @@
+{
+  "revision": 4,
+  "deviceId": "b5af91a0-92aa-4334-9c72-2ba54192156b",
+  "entries": [
+    {
+      "id": "e650a9a7-423c-45db-9e1d-997ef3225571",
+      "title": "Café 😅 Ñandú",
+      "username": "",
+      "password": "",
+      "url": "",
+      "notes": "Notas café mañana",
+      "createdAt": "2026-11-09T18:08:26.182Z",
+      "updatedAt": "2026-11-09T18:08:26.182Z",
+      "deletedAt": null,
+      "conflict": false
+    },
+    {
+      "id": "2fd611f0-262b-4af8-ab02-258f13c7c56f",
+      "title": "Fixture Login",
+      "username": "fixture-user",
+      "password": "",
+      "url": "https://example.invalid/login",
+      "notes": "",
+      "createdAt": "2026-11-09T18:09:14.157Z",
+      "updatedAt": "2026-11-09T18:09:14.157Z",
+      "deletedAt": null,
+      "conflict": false
+    },
+    {
+      "id": "9864ec31-2bed-478f-b25d-cf282be4ba39",
+      "title": "Minimal",
+      "username": "",
+      "password": "",
+      "url": "",
+      "notes": "",
+      "createdAt": "2026-11-09T18:09:27.177Z",
+      "updatedAt": "2026-11-09T18:09:27.177Z",
+      "deletedAt": null,
+      "conflict": false
+    }
+  ],
+  "settings": {}
+}

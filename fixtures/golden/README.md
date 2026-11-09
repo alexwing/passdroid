@@ -15,6 +15,8 @@ credential. Do not reuse the password or the sync settings anywhere.
 | `android-32mib.pdvault` | Same VaultData sealed with the Android KDF params |
 | `expected-desktop.json` | Decrypted `VaultData` JSON of the desktop fixture |
 | `expected-android.json` | Decrypted `VaultData` JSON of the Android fixture |
+| `android-real-32mib.pdvault` | Created on a real Android device (POCO X7 Pro, Android 16) with the debug build of branch `fix/android-export`, exported via the app's "Encrypted copy" (MediaStore); vault `phase0golden`, test password `phase0-golden-vectors`, 2026-11-09. Real Android KDF params (32 MiB). Own data: 3 entries (`Café 😅 Ñandú` with notes `Notas café mañana`, `Fixture Login`, `Minimal`), empty `settings` (no icon, no sync) |
+| `expected-android-real.json` | Decrypted `VaultData` JSON of `android-real-32mib.pdvault` (taken from the Kindle C decryptor, checked equal in native Rust and Rust-WASM) |
 
 - Master password: `phase0-golden-vectors`
 - KDF (both): Argon2id, t=3, p=1, output 32 bytes, 16-byte random salt
