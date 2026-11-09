@@ -10,9 +10,9 @@
 use std::{fs, path::PathBuf};
 
 use passdroid_core::{
-    change_password, decode_b64, derive_key, encode_b64, open_envelope, open_envelope_with_key,
-    parse_envelope, reseal_envelope, seal_envelope, vault_status, visible_entries, VaultEnvelope,
-    VAULT_MAGIC,
+    change_password, check_kdf_bounds, decode_b64, derive_key, encode_b64, open_envelope,
+    open_envelope_with_key, parse_envelope, reseal_envelope, seal_envelope, vault_status,
+    visible_entries, VaultEnvelope, VAULT_MAGIC,
 };
 
 const TEST_PASSWORD: &str = "phase0-golden-vectors";
@@ -166,4 +166,13 @@ fn android_real_fixture_opens_with_core() {
     assert_eq!(reopened.header.kdf.memory_kib, 32 * 1024);
     assert_ne!(reopened.header.nonce, envelope.header.nonce);
     assert_eq!(serde_json::to_value(&reopened.data).unwrap(), expected);
+}
+
+/// The KDF params in every golden fixture header are inside the accepted bounds.
+#[test]
+fn golden_fixture_headers_pass_kdf_bounds() {
+    for file in ["desktop-64mib.pdvault", "android-32mib.pdvault", "android-real-32mib.pdvault"] {
+        let envelope = parse_envelope(&read_fixture(file)).unwrap();
+        assert_eq!(check_kdf_bounds(&envelope.header.kdf), Ok(()), "{file}");
+    }
 }

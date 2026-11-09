@@ -16,9 +16,11 @@ pub use crypto::{
     open_payload, random_bytes, seal_payload, VAULT_MAGIC,
 };
 pub use envelope::{
-    change_password, new_header, new_vault, new_vault_data, open_envelope, open_envelope_with_key,
-    parse_envelope, reseal_envelope, seal_envelope, validate_header, validate_password,
-    vault_status, NewVault, OpenedVault,
+    change_password, check_kdf_bounds, new_header, new_vault, new_vault_data, open_envelope,
+    open_envelope_with_key, parse_envelope, reseal_envelope, seal_envelope, validate_header,
+    validate_password, vault_status, NewVault, OpenedVault, KDF_MAX_ITERATIONS,
+    KDF_MAX_MEMORY_KIB, KDF_MAX_PARALLELISM, KDF_MIN_ITERATIONS, KDF_MIN_MEMORY_KIB,
+    KDF_MIN_PARALLELISM, KDF_OUTPUT_LEN, KDF_SALT_LEN,
 };
 pub use merge::{merge_entries, visible_entries};
 pub use models::{
