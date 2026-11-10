@@ -4,67 +4,67 @@
 
 # Passdroid Next
 
-Gestor de contraseñas y notas Markdown con bóveda cifrada, para escritorio (Windows, macOS y Linux) y Android desde un mismo código. Está hecho con **Tauri 2, React y Rust**.
+A password manager with an encrypted vault and Markdown notes, for desktop (Windows, macOS and Linux) and Android from a single codebase. Built with **Tauri 2, React and Rust**.
 
-Es la sucesora de la app Android original [Passdroid](https://github.com/mangefoo/passdroid). Este repositorio conserva su historial de git como punto de partida, pero la aplicación es nueva.
+It is the successor to the original [Passdroid](https://github.com/mangefoo/passdroid) Android app. This repository keeps that app's git history as its starting point, but the application is new.
 
-Los secretos nunca van a una base de datos ni a un fichero en claro. La bóveda es un único fichero cifrado `.pdvault`. En escritorio puedes guardarlo donde quieras, incluida una carpeta sincronizada (Google Drive, Dropbox, OneDrive, Syncthing, Nextcloud o una carpeta compartida). En Android vive en el almacenamiento privado de la app y se sincroniza entre dispositivos por FTPS.
+Secrets never go into a database or a plaintext file. The vault is a single encrypted `.pdvault` file. On desktop you can keep it wherever you like, including a synced folder (Google Drive, Dropbox, OneDrive, Syncthing, Nextcloud or a network share). On Android it lives in the app's private storage and syncs across devices over FTPS.
 
-## Características
+## Features
 
-- **Entradas**: título, usuario, contraseña, URL y notas, con búsqueda instantánea. Borrar una entrada pide confirmación.
-- **Notas en Markdown**: el campo de notas alterna entre *Escribir* y *Vista previa* (tablas, listas de tareas, código) y recuerda la vista elegida. El HTML se muestra como texto y los enlaces solo admiten http, https y mailto; se abren en el navegador del sistema y muestran el host real si el texto del enlace es distinto. Nunca se cargan imágenes remotas.
-- **Copiar entrada sin la contraseña**: copia como texto plano el título, el usuario, la URL y las notas para pasárselos a alguien. La contraseña nunca se incluye; el texto indica que se envía por separado.
-- **Sincronización por FTPS**: opcional y con validación del certificado. Al abrir, si la copia del servidor es más reciente, ofrece descargarla y fusionarla. Tras cada cambio sube el resultado de forma atómica.
-- **Vinculación por QR**: un código `pdvault://` lleva la configuración de sincronización a otro móvil o equipo. Se puede leer con la cámara, desde una imagen o desde el portapapeles. La contraseña maestra **nunca** va en el QR.
-- **Generador de contraseñas**: longitud y mayúsculas, minúsculas, números y símbolos.
-- **Icono por bóveda**: se guarda dentro de la bóveda, así que se sincroniza, y aparece en las pantallas de inicio, desbloqueo y bóveda.
-- **Bóvedas recientes**: se reabren desde la pantalla de inicio.
-- **Importación** desde la app Passdroid original: XML en claro, exportación cifrada `sqt` o base de datos SQLite `password.db`.
-- **Exportación**: copia cifrada `.pdvault` o XML compatible con la app antigua (sin cifrar). En Android se guarda en `Download/Passdroid/`. Cada exportación se relee y se comprueba antes de darla por buena.
-- **Protección en Android**: bloqueo de capturas y grabación de pantalla (`FLAG_SECURE`), miniatura en blanco en las apps recientes y bloqueo de la bóveda al pasar a segundo plano.
-- **Ajustes** en pestañas: *General* (apariencia, idioma, icono), *Sincronización* (servidor, prueba, sincronización manual y QR) y *Seguridad* (cambio de contraseña maestra).
-- **Interfaz**: diseño azul marino y ámbar con tema claro, oscuro o del sistema; barra de título propia en escritorio, raíl lateral plegable, barra inferior con botón flotante en móvil, y español e inglés con detección automática.
+- **Entries**: title, username, password, URL and notes, with instant search. Deleting an entry asks for confirmation.
+- **Markdown notes**: the notes field switches between *Write* and *Preview* (tables, task lists, code) and remembers the chosen view. HTML is shown as text and links only allow http, https and mailto; they open in the system browser and show the real host when the link text differs. Remote images are never loaded.
+- **Copy an entry without its password**: copies the title, username, URL and notes as plain text to share with someone. The password is never included; the text says it is sent separately.
+- **FTPS sync**: optional, with certificate validation. On open, if the server copy is newer, the app offers to download and merge it. After each change it uploads the result atomically.
+- **QR linking**: a `pdvault://` code carries the sync settings to another phone or computer. It can be read with the camera, from an image or from the clipboard. The master password is **never** in the QR.
+- **Password generator**: length plus upper case, lower case, numbers and symbols.
+- **Per-vault icon**: stored inside the vault, so it syncs, and shown on the start, unlock and vault screens.
+- **Recent vaults**: reopen them from the start screen.
+- **Import** from the original Passdroid app: cleartext XML, encrypted `sqt` export or a `password.db` SQLite database.
+- **Export**: an encrypted `.pdvault` copy or legacy-compatible XML (unencrypted). On Android it is saved to `Download/Passdroid/`. Every export is read back and checked before it is reported as done.
+- **Android protection**: screenshots and screen recording are blocked (`FLAG_SECURE`), the recent-apps thumbnail is blanked, and the vault locks when the app goes to the background.
+- **Tabbed settings**: *General* (appearance, language, icon), *Sync* (server, connection test, manual sync and QR) and *Security* (master password change).
+- **Interface**: navy and amber design with light, dark or system theme; a custom title bar on desktop, a collapsible side rail, a bottom bar with a floating action button on mobile, and English and Spanish with automatic detection.
 
-Hay también un cliente web, Passdroid Web (repositorio aparte), que se aloja en un servidor propio y abre la misma bóveda.
+There is also a web client, Passdroid Web (separate repository), which runs on your own server and opens the same vault.
 
-## Descargas
+## Downloads
 
-Las versiones para cada plataforma están en [GitHub Releases](https://github.com/alexwing/passdroid/releases):
+Builds for each platform are on [GitHub Releases](https://github.com/alexwing/passdroid/releases):
 
-| Plataforma | Paquete |
+| Platform | Package |
 |---|---|
-| Android | APK firmado (`.apk`), Android 7.0 o superior (API 24+) |
-| Windows | Instalador (`Setup.exe`, NSIS) |
-| Windows | Ejecutable portátil (`Standalone.exe`), sin instalación |
-| Windows | Instalador MSI (`.msi`) |
+| Android | Signed APK (`.apk`), Android 7.0 or later (API 24+) |
+| Windows | Installer (`Setup.exe`, NSIS) |
+| Windows | Portable executable (`Standalone.exe`), no installation |
+| Windows | MSI installer (`.msi`) |
 
-## Cómo funciona
+## How it works
 
 ```
-Escritorio / Android (Tauri)                     Servidor FTPS
+Desktop / Android (Tauri)                        FTPS server
 ┌──────────────────────────────┐                 ┌─────────────────────┐
-│ React (interfaz)             │                 │ carpeta de bóvedas  │
-│        │ comandos Tauri      │   FTPS (TLS)    │  passdroid.pdvault  │
+│ React (interface)            │                 │ vault folder        │
+│        │ Tauri commands      │   FTPS (TLS)    │  passdroid.pdvault  │
 │ Rust:                        │ ──────────────► │  .htaccess (deny)   │
-│  · Argon2id (derivar clave)  │  bytes cifrados │                     │
+│  · Argon2id (key derivation) │ encrypted bytes │                     │
 │  · XChaCha20-Poly1305        │ ◄────────────── │                     │
-│  · fusión por id/updated_at  │                 └─────────────────────┘
-│ Texto claro solo en memoria  │
+│  · merge by id/updated_at    │                 └─────────────────────┘
+│ Plaintext only in memory     │
 └──────────────┬───────────────┘
-               │ disco
-        fichero .pdvault
+               │ disk
+          .pdvault file
 ```
 
-- **Cifrado en Rust.** La interfaz React pide las operaciones al backend por comandos de Tauri. La clave se deriva con Argon2id y el contenido se cifra con XChaCha20-Poly1305.
-- **Un único fichero.** La bóveda se sincroniza como un bloque cifrado. Al sincronizar se descifran las dos revisiones y se fusionan entrada a entrada.
-- **Configuración dentro de la bóveda.** Los datos de conexión al servidor (host, puerto, usuario, contraseña, carpeta y fichero) se guardan cifrados dentro de la bóveda, protegidos por la contraseña maestra.
+- **Encryption in Rust.** The React interface asks the backend for every operation through Tauri commands. The key is derived with Argon2id and the content is encrypted with XChaCha20-Poly1305.
+- **A single file.** The vault syncs as one encrypted blob. When syncing, both revisions are decrypted and merged entry by entry.
+- **Settings inside the vault.** The server connection details (host, port, username, password, folder and file) are stored encrypted inside the vault, protected by the master password.
 
-### Formato de la bóveda (`passdroid-vault-v1`)
+### Vault format (`passdroid-vault-v1`)
 
 ```jsonc
 {
-  "header": {            // visible, autenticada como AAD
+  "header": {            // visible, authenticated as AAD
     "magic": "passdroid-vault-v1",
     "version": 1,
     "vaultId": "...",
@@ -73,108 +73,108 @@ Escritorio / Android (Tauri)                     Servidor FTPS
     "nonce": "<base64>",
     "createdAt": "...", "updatedAt": "..."
   },
-  "payload": "<base64>"  // cifra { entries, revision, deviceId, settings }
+  "payload": "<base64>"  // encrypts { entries, revision, deviceId, settings }
 }
 ```
 
-## Seguridad
+## Security
 
-- **Derivación de clave.** Argon2id (RFC 9106) con 64 MiB de memoria, 3 iteraciones, paralelismo 1, sal aleatoria de 16 bytes y clave de 32 bytes. En Android se usan 32 MiB. Los parámetros van en la cabecera de cada bóveda, así que se abre en cualquier dispositivo, se creara donde se creara.
-- **Cifrado.** XChaCha20-Poly1305 (AEAD). La cabecera JSON visible se autentica como dato asociado (AAD), así que cualquier manipulación se detecta.
-- **Memoria.** Las claves derivadas van envueltas en `zeroize` y se borran al bloquear.
-- **Conflictos.** Si la misma entrada cambió en dos sitios, se crea un duplicado marcado como conflicto en lugar de perder datos.
-- **Sincronización.**
-  - FTPS por defecto: TLS explícito en el puerto 21 con `rustls`. El certificado se valida contra las raíces públicas y el nombre del host, y el canal de datos también va cifrado (`PROT P`). Conecta por nombre de host, no por IP.
-  - FTP sin cifrar solo como opción heredada, marcada como insegura.
-  - Las subidas van a un temporal `.<fichero>.<aleatorio>.part`, se comprueba su tamaño y solo después se renombra sobre la bóveda.
-  - Solo un «fichero no encontrado» (550) cuenta como que no hay bóveda remota. Cualquier otro error detiene la sincronización en lugar de sobrescribir una copia más reciente.
-  - Junto a la bóveda se deja un `.htaccess` que deniega todo, para que la carpeta nunca se sirva por web.
-  - Las conexiones caducan (15 s al conectar, 30 s de E/S) en vez de quedarse colgadas.
-- **QR.** No incluye la contraseña maestra, pero sí el usuario y la contraseña del FTP. Trátalo como un secreto y enséñalo solo a tus dispositivos.
-- **Android.** `FLAG_SECURE`, bloqueo automático al pasar a segundo plano y bóveda en el almacenamiento privado de la app.
+- **Key derivation.** Argon2id (RFC 9106) with 64 MiB of memory, 3 iterations, parallelism 1, a random 16-byte salt and a 32-byte key. Android uses 32 MiB. The parameters are stored in each vault's header, so a vault opens on any device wherever it was created.
+- **Encryption.** XChaCha20-Poly1305 (AEAD). The visible JSON header is authenticated as associated data (AAD), so any tampering is detected.
+- **Memory.** Derived keys are wrapped in `zeroize` and wiped on lock.
+- **Conflicts.** If the same entry changed in two places, a duplicate marked as a conflict is created instead of losing data.
+- **Sync.**
+  - FTPS by default: explicit TLS on port 21 with `rustls`. The certificate is validated against the public roots and the host name, and the data channel is encrypted too (`PROT P`). Connect by host name, not by IP.
+  - Plain FTP only as a legacy option, flagged as insecure.
+  - Uploads go to a temporary `.<file>.<random>.part`, its size is checked, and only then is it renamed over the vault.
+  - Only a definite "file not found" (550) counts as no remote vault. Any other error stops the sync instead of overwriting a newer copy.
+  - A deny-all `.htaccess` is placed next to the vault so the folder is never served over the web.
+  - Connections time out (15 s to connect, 30 s for I/O) instead of hanging.
+- **QR.** It does not include the master password, but it does include the FTP username and password. Treat it as a secret and show it only to your own devices.
+- **Android.** `FLAG_SECURE`, automatic lock in the background and the vault in the app's private storage.
 
-> Usa una **cuenta FTP dedicada y con los mínimos permisos** y, en tu servidor, obliga a usar TLS (por ejemplo, en vsftpd, `force_local_logins_ssl=YES` y `force_local_data_ssl=YES`).
+> Use a **dedicated, least-privilege FTP account** and, on your server, enforce TLS (for example, in vsftpd, `force_local_logins_ssl=YES` and `force_local_data_ssl=YES`).
 
-## Sincronización
+## Sync
 
-- **FTPS integrado** (Ajustes → *Sincronización*). Al abrir una bóveda, si la del servidor es más reciente, la app ofrece descargarla y fusionarla. Tras cada cambio sube el resultado fusionado.
-- **Vincular otro dispositivo** (Ajustes → *Sincronización* → *Vincular otro dispositivo*). Genera el QR. En el otro equipo, pulsa **Vincular mediante QR** en la pantalla de inicio, léelo y escribe la contraseña maestra: la app descarga la bóveda, la desbloquea y guarda la configuración del QR. Si la bóveda está en la raíz del FTP, el QR envía la carpeta como `/`.
-- **En Android** la bóveda vive en el almacenamiento privado de la app. Android revoca los permisos del selector de ficheros al reiniciar, así que un fichero elegido en Documentos o Drive no se podría reabrir de forma fiable. *Importar vault* copia una vez el fichero elegido y a partir de ahí el FTP mantiene sincronizados los dispositivos. Usa *Exportar* si quieres una copia en Documentos.
-- **En escritorio** puedes prescindir del FTP y guardar el `.pdvault` en una carpeta sincronizada con [Syncthing](https://syncthing.net/), Dropbox, OneDrive, Nextcloud, etc.
+- **Built-in FTPS** (Settings → *Sync*). When you open a vault and the server copy is newer, the app offers to download and merge it. After every change it uploads the merged result.
+- **Link another device** (Settings → *Sync* → *Link another device*). Generates the QR. On the other device, tap **Link via QR** on the start screen, scan it and enter the master password: the app downloads the vault, unlocks it and saves the settings from the QR. If the vault is at the root of the FTP server, the QR sends the folder as `/`.
+- **On Android** the vault lives in the app's private storage. Android revokes file-picker permissions on restart, so a file picked in Documents or Drive could not be reopened reliably. *Import vault* copies the picked file in once, and from then on FTP keeps the devices in sync. Use *Export* if you want a copy in Documents.
+- **On desktop** you can skip FTP and keep the `.pdvault` in a folder synced with [Syncthing](https://syncthing.net/), Dropbox, OneDrive, Nextcloud, etc.
 
-## Migración desde Passdroid
+## Migrating from Passdroid
 
-Ajustes → **Importar Passdroid** lee una exportación o base de datos antigua, la descifra en memoria con la contraseña antigua, muestra una vista previa y añade las entradas a la bóveda actual. Admite:
+Settings → **Import Passdroid** reads an old export or database, decrypts it in memory with the old password, shows a preview and adds the entries to the current vault. Supported sources:
 
-- Exportaciones en claro `passdroid_db.xml`
-- Exportaciones cifradas (formato AES-CBC con la marca `sqt`)
-- Bases de datos SQLite `password.db` (Passdroid 2.x, tablas `system` y `data`)
+- Cleartext `passdroid_db.xml` exports
+- Encrypted exports (the AES-CBC format with the `sqt` magic)
+- `password.db` SQLite databases (Passdroid 2.x, `system` and `data` tables)
 
-La criptografía antigua vive solo en `src-tauri/src/legacy.rs` y nunca se usa para crear datos nuevos.
+The legacy crypto lives only in `src-tauri/src/legacy.rs` and is never used to create new data.
 
-## Estructura del repositorio
+## Repository layout
 
-| Carpeta | Contenido |
+| Folder | Contents |
 |---|---|
-| `src/` | Interfaz React y TypeScript: `App.tsx`, componentes, traducciones (`i18n/`) y estilos |
-| `src/dev/` | Sustitutos de las APIs de Tauri para la vista previa en el navegador (`npm run dev:preview`) |
-| `src-tauri/src/` | Backend Rust: cifrado (`crypto.rs`), bóveda y fusión (`vault.rs`), sincronización (`sync.rs`), exportación, preferencias e importación antigua (`legacy.rs`) |
-| `src-tauri/gen/android/` | Proyecto Gradle de Android generado por Tauri |
-| `.github/workflows/` | Compilación y publicación de versiones al crear una etiqueta `v*` |
-| `docs/design/` | Propuesta de diseño y maqueta |
+| `src/` | React and TypeScript interface: `App.tsx`, components, translations (`i18n/`) and styles |
+| `src/dev/` | Stand-ins for the Tauri APIs used by the in-browser preview (`npm run dev:preview`) |
+| `src-tauri/src/` | Rust backend: encryption (`crypto.rs`), vault and merge (`vault.rs`), sync (`sync.rs`), export, preferences and legacy import (`legacy.rs`) |
+| `src-tauri/gen/android/` | Android Gradle project generated by Tauri |
+| `.github/workflows/` | Builds and publishes releases when a `v*` tag is pushed |
+| `docs/design/` | Design proposal and mockup |
 
-## Requisitos
+## Requirements
 
-- [Rust](https://www.rust-lang.org/tools/install) estable y Cargo
-- [Node.js](https://nodejs.org/) 20 o superior y npm
-- Las dependencias de sistema de Tauri: [requisitos de Tauri](https://v2.tauri.app/start/prerequisites/)
-- Para Android: Android SDK y NDK, con `ANDROID_HOME` y `NDK_HOME` definidos (SDK mínimo 24)
+- [Rust](https://www.rust-lang.org/tools/install) stable and Cargo
+- [Node.js](https://nodejs.org/) 20 or later and npm
+- Tauri's system dependencies: [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+- For Android: Android SDK and NDK, with `ANDROID_HOME` and `NDK_HOME` set (minimum SDK 24)
 
-## Desarrollo
+## Development
 
 ```bash
 npm install
-npm run tauri:dev      # escritorio con recarga en caliente
-npm run tauri:build    # paquete de escritorio
+npm run tauri:dev      # desktop with hot reload
+npm run tauri:build    # desktop bundle
 ```
 
-`npm run dev` y `npm run build` solo arrancan o compilan la interfaz web (Vite en el puerto 1420). `npm run dev:preview` la abre en el navegador con las APIs de Tauri simuladas, útil para revisar la interfaz sin compilar la app.
+`npm run dev` and `npm run build` only run or build the web interface (Vite on port 1420). `npm run dev:preview` opens it in the browser with the Tauri APIs mocked, which is handy for reviewing the interface without building the app.
 
 ### Android
 
-El proyecto Gradle está en `src-tauri/gen/android`.
+The Gradle project is in `src-tauri/gen/android`.
 
 ```bash
-npm run tauri:android:init    # una sola vez; regenera src-tauri/gen/android
-npm run tauri:android:dev     # en un dispositivo o emulador
+npm run tauri:android:init    # once; regenerates src-tauri/gen/android
+npm run tauri:android:dev     # on a device or emulator
 npm run tauri:android:build   # APK/AAB
 ```
 
-El árbol `gen/android` está en el repositorio, así que un clon limpio compila sin ejecutar `init`. Solo se ignoran las salidas de compilación (`build/`, `.gradle/` y las `*.so` nativas). Vuelve a ejecutar `init` solo al actualizar la plantilla Android de Tauri.
+The `gen/android` tree is committed, so a clean checkout builds without running `init`. Only build outputs (`build/`, `.gradle/` and native `*.so` files) are ignored. Re-run `init` only when updating Tauri's Android template.
 
-### Tests y comprobaciones
+### Tests and checks
 
-En `src-tauri/`:
+In `src-tauri/`:
 
 ```bash
-cargo test                   # cifrado, KDF, ciclo de vida de la bóveda, fusión y conflictos, importación antigua
+cargo test                   # crypto, KDF, vault lifecycle, merge and conflicts, legacy import
 cargo clippy --all-targets
 ```
 
-En la raíz:
+At the root:
 
 ```bash
-npm run build                # comprueba los tipos (tsc) y compila la interfaz
+npm run build                # type-checks (tsc) and builds the interface
 ```
 
-## Publicar una versión
+## Releasing a version
 
-1. Sube la versión en `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` y `src-tauri/Cargo.lock`.
-2. Añade la sección de la versión al principio de [RELEASE_NOTES.md](RELEASE_NOTES.md).
-3. Crea la etiqueta `vX.Y.Z` y súbela. El flujo de GitHub Actions compila Windows y Android y publica la versión en Releases.
+1. Bump the version in `package.json`, `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `src-tauri/Cargo.lock`.
+2. Add the version's section at the top of [RELEASE_NOTES.md](RELEASE_NOTES.md).
+3. Create the `vX.Y.Z` tag and push it. The GitHub Actions workflow builds Windows and Android and publishes the release.
 
-## Licencia
+## License
 
 GPL-3.0-or-later ([LICENSE.TXT](LICENSE.TXT)).
 
-El código de migración de `src-tauri/src/legacy.rs` reimplementa el cifrado en disco de la app Passdroid original (Copyright © 2009–2012 Magnus Eriksson), reutilizado bajo GPLv3. La estructura de Tauri se inspira en el proyecto de referencia Syncdrome (MIT), sin copiar su código.
+The migration code in `src-tauri/src/legacy.rs` reimplements the on-disk crypto of the original Passdroid app (Copyright © 2009–2012 Magnus Eriksson), reused under GPLv3. The Tauri structure is inspired by the Syncdrome reference project (MIT), without copying its code.
