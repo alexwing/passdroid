@@ -45,7 +45,10 @@ export function encodeQrPayload(config: SyncConfig): string {
     port: config.port,
     username: config.username,
     password: config.password,
-    remoteDir: config.remoteDir,
+    // An empty remoteDir means the FTP root. Readers before v3.1.9 replace an
+    // empty value with "vault" (they used `||`), so the root is sent as "/":
+    // every reader keeps it, and `enter_dir` trims it back to the root.
+    remoteDir: config.remoteDir.trim() === "" ? "/" : config.remoteDir,
     remoteFile: config.remoteFile,
   };
   return `pdvault://${toBase64Utf8(JSON.stringify(payload))}`;
@@ -65,9 +68,10 @@ export function parseQrPayload(text: string): SyncConfig | null {
       protocol: data.protocol || "ftp",
       host: data.host,
       port: data.port || 21,
-      username: data.username || "",
-      password: data.password || "",
-      remoteDir: data.remoteDir || "vault",
+      username: data.username ?? "",
+      password: data.password ?? "",
+      // Only a MISSING field takes the default: "" (or "/") is the FTP root.
+      remoteDir: typeof data.remoteDir === "string" ? data.remoteDir : "vault",
       remoteFile: data.remoteFile || "passdroid.pdvault",
     };
   } catch {
