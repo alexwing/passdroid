@@ -1,6 +1,21 @@
-# Passdroid v3.1.5
+# Passdroid v3.1.6
 
-## 🚀 What's New in v3.1.5
+## 🚀 What's New in v3.1.6
+
+### 🔗 QR linking keeps the scanned sync settings (important)
+- **The bug**: linking a device by QR downloaded the remote vault and saved it as is, so the vault on disk kept the sync settings it was uploaded with (for example plain FTP). The FTPS settings from the QR only lived in memory and were gone the next time the vault was opened.
+- **The fix**: the vault is saved with the scanned settings already stored inside it, and linking now reports an error instead of silently continuing if that step fails.
+
+### 📱 QR dialog fits on phones
+- The *Link another device* dialog no longer overflows on the right on narrow phones: the QR code shrinks to fit the dialog.
+
+### 🖥️ Settings on large screens
+- On wide windows the title, tabs and settings share a single centred column instead of hugging the left edge.
+
+---
+
+
+## 📦 Prior v3.1.5 Highlights
 
 ### ⚙️ Settings inside the window
 - **Settings is no longer a popup.** It opens as a view inside the vault window: on desktop it takes the place of the entry list and editor (the side rail stays visible and highlights *Settings*); on phones it fills the screen above the bottom bar, which also marks the active view.

@@ -988,11 +988,13 @@ function App() {
       const contents = await Api.downloadFtpVault(config);
       // 2. Unlock & verify master password
       const status = await Api.unlockVault(contents, password);
-      // 3. Save local vault file
-      await writeTextFile(path, contents);
-      // 4. Update sync config inside vault
-      await Api.setSyncConfig(config).catch(() => {});
-      return { path, status };
+      // 3. Store the scanned sync config inside the vault. The downloaded copy
+      //    still carries whatever config the remote was saved with (e.g. plain
+      //    FTP), so the file written to disk must be the re-sealed snapshot.
+      const snap = await Api.setSyncConfig(config);
+      // 4. Save local vault file
+      await writeTextFile(path, snap.contents);
+      return { path, status: snap.status };
     }, "qrVaultLinked");
 
     if (success) {

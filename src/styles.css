@@ -1999,6 +1999,10 @@ button.md-img:hover {
 .modal-body {
   --modal-pad: 20px;
   display: grid;
+  /* One column that never grows past the dialog: an "auto" column widens to
+     the widest child's min-content (e.g. the 280px QR on a 375px phone) and
+     pushes the content out of the dialog on the right. */
+  grid-template-columns: minmax(0, 1fr);
   /* Rows keep their content height: the body scrolls instead of squeezing them. */
   grid-auto-rows: max-content;
   align-content: start;
@@ -2017,6 +2021,9 @@ button.md-img:hover {
 
 /* Settings view: fills the list and editor columns, only the body scrolls. */
 .settings-panel {
+  /* Header, tabs and content share one centred column on wide screens. */
+  --settings-w: 880px;
+  --settings-pad: max(28px, calc((100% - var(--settings-w)) / 2));
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -2028,7 +2035,7 @@ button.md-img:hover {
 .settings-head {
   display: grid;
   flex: none;
-  padding: 20px 28px 16px;
+  padding: 20px var(--settings-pad) 16px;
 }
 
 .settings-head h2 {
@@ -2044,13 +2051,14 @@ button.md-img:hover {
 .settings-body {
   min-height: 0;
   flex: 1;
-  padding: 22px 28px;
+  padding: 22px var(--settings-pad) 28px;
   overflow: auto;
 }
 
 .settings-content {
   display: grid;
-  max-width: 720px;
+  width: 100%;
+  max-width: var(--settings-w);
   /* Rows keep their content height: the body scrolls instead of squeezing them. */
   grid-auto-rows: max-content;
   align-content: start;
@@ -2063,7 +2071,8 @@ button.md-img:hover {
   flex: none;
   min-height: 41px;
   gap: 4px;
-  padding: 0 28px;
+  /* Tabs line up with the content column; the bar itself stays edge to edge. */
+  padding: 0 calc(var(--settings-pad) - 12px);
   /* Horizontal scroll only on very narrow screens; overflow-y must be hidden or the
      active underline adds a 1px vertical scrollbar. */
   overflow-x: auto;
@@ -3006,15 +3015,18 @@ button.md-img:hover {
 }
 
 .qr-image {
-  width: min(280px, 100%);
+  display: block;
+  width: 280px;
+  max-width: 100%;
+  min-width: 0;
   height: auto;
   aspect-ratio: 1;
 }
 
 .qr-placeholder {
   display: grid;
-  width: 280px;
-  height: 280px;
+  width: min(280px, 100%);
+  aspect-ratio: 1;
   place-items: center;
   color: #66758f;
 }
