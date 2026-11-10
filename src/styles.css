@@ -1223,6 +1223,9 @@ input.switch:checked::after {
 
 .entry-list {
   display: grid;
+  /* Rows never grow past the list: a long title or user with no spaces is
+     ellipsized instead of making the whole list scroll sideways. */
+  grid-template-columns: minmax(0, 1fr);
   min-height: 0;
   flex: 1;
   align-content: start;
@@ -1604,6 +1607,9 @@ input.switch:checked::after {
   padding: 5px 10px;
   border: 1px solid var(--border);
   text-align: left;
+  /* Keep words and values (IPs, user names) whole: the table scrolls inside
+     .md-table instead of breaking them letter by letter on phones. */
+  overflow-wrap: normal;
 }
 
 .md th {

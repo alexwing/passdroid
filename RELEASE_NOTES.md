@@ -1,6 +1,26 @@
-# Passdroid v3.1.7
+# Passdroid v3.1.9
 
-## 🚀 What's New in v3.1.7
+## 🚀 What's New in v3.1.9
+
+### 🔗 QR linking with a vault at the FTP root
+- **The bug**: when the vault lived in the root folder of the FTP server (empty remote folder), the device that scanned the link QR read it as the default `vault` folder, created `/vault` on the server and did not find the file.
+- The QR now sends the root as `/`, which every version (including older ones) keeps and treats as the root.
+- When reading a QR, the `vault` default is only used if the folder field is missing; an empty value or `/` means the root.
+
+---
+
+
+## 📦 Prior v3.1.8 Highlights
+
+### 📱 Phones with larger text
+- The entry list no longer scrolls sideways when an entry has a long title or user name without spaces (for example a long e-mail address): it is shortened with an ellipsis.
+- Tables in the notes preview keep words and values (IP addresses, user names) whole and scroll sideways inside their own box, like code blocks, instead of breaking them letter by letter.
+- Checked the start, unlock, list, editor and settings screens on a 375 px phone with text at 110 %.
+
+---
+
+
+## 📦 Prior v3.1.7 Highlights
 
 ### 📋 Copy an entry without its password
 - A new button in the entry header copies the entry as plain text to share with someone: title, user, URL and, at the end, the notes. The password is **never** included; the text says it is sent separately so you can paste it on its own.
