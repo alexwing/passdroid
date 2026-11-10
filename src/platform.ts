@@ -38,6 +38,10 @@ export interface PlatformCapabilities {
   /** The vault is saved to the Passdroid Web server after every change
    *  (status text instead of the FTP sync state). */
   serverSync: boolean;
+  /** The start screen offers "New vault", which asks the web shell to create
+   *  one on the server (CREATE_SERVER_VAULT_EVENT). The shell turns it on for
+   *  administrators only. */
+  serverCreateVault: boolean;
 }
 
 export const DESKTOP_CAPABILITIES: PlatformCapabilities = {
@@ -53,6 +57,7 @@ export const DESKTOP_CAPABILITIES: PlatformCapabilities = {
   vaultIcon: true,
   titleBar: true,
   serverSync: false,
+  serverCreateVault: false,
 };
 
 export const WEB_CAPABILITIES: PlatformCapabilities = {
@@ -68,6 +73,7 @@ export const WEB_CAPABILITIES: PlatformCapabilities = {
   vaultIcon: false,
   titleBar: false,
   serverSync: true,
+  serverCreateVault: false,
 };
 
 /** Name, tagline and logo of the app, set by the Passdroid Web administrator.
@@ -100,6 +106,16 @@ export const VAULT_CHANGED_EVENT = "passdroid:vault-changed";
  *  expired, the user chose to lock after a rollback warning): the UI runs its
  *  normal lock and returns to the unlock screen. Web only. */
 export const VAULT_LOCK_EVENT = "passdroid:lock";
+
+/** Event the UI dispatches on `window` when an administrator asks for a new
+ *  vault on the server (start screen, `serverCreateVault`). The web shell shows
+ *  its own dialog and does the cryptography. Web only. */
+export const CREATE_SERVER_VAULT_EVENT = "passdroid:create-server-vault";
+
+/** Event the web shell dispatches on `window` after the list of server vaults
+ *  changed (an administrator created one): the start screen reloads its
+ *  list. Never dispatched on desktop/Android. */
+export const VAULTS_CHANGED_EVENT = "passdroid:vaults-changed";
 
 /** Event the web shell dispatches on `window` after it replaces
  *  `globalThis.__PASSDROID_BRAND__`. Never dispatched on desktop/Android. */

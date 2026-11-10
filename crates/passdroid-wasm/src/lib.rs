@@ -216,6 +216,15 @@ pub fn merge_session(
     serde_json_string(&core::merge_session(&base, &remote, &local, settings_dirty))
 }
 
+/// A brand-new empty vault sealed with `password` (`new_vault`: the password is
+/// validated, default KDF params, fresh header and device id), as the envelope
+/// JSON at revision 1. A too-short password is `master_password_too_short`.
+#[wasm_bindgen(js_name = newVault)]
+pub fn new_vault(password: &str) -> Result<String, JsError> {
+    let mut created = core::new_vault(password).map_err(err)?;
+    core::seal_envelope(&mut created.header, &mut created.data, &created.key[..]).map_err(err)
+}
+
 /// Rollback guard (`check_rollback`). Revisions must be integers >= 0, otherwise
 /// `invalid_revision`. `max_seen_revision` is optional (`undefined` or `null`).
 #[wasm_bindgen(js_name = checkRollback)]

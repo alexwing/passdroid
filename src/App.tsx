@@ -74,7 +74,14 @@ import { Toast } from "./components/Toast";
 import { TitleBar } from "./components/TitleBar";
 import { NotesBoundary } from "./components/NotesPlain";
 import { passwordStrength, type StrengthLevel } from "./utils/passwordStrength";
-import { VAULT_CHANGED_EVENT, VAULT_LOCK_EVENT, platform, useBrand } from "./platform";
+import {
+  CREATE_SERVER_VAULT_EVENT,
+  VAULT_CHANGED_EVENT,
+  VAULT_LOCK_EVENT,
+  VAULTS_CHANGED_EVENT,
+  platform,
+  useBrand,
+} from "./platform";
 
 // Markdown pulls in react-markdown + remark-gfm (~170 kB), so it loads on first preview.
 const NotesMarkdown = lazy(() => import("./components/NotesMarkdown").then((m) => ({ default: m.NotesMarkdown })));
@@ -342,6 +349,25 @@ function App() {
     };
   }, [caps.web, screen]);
 
+  // Web admin: the shell created a vault on the server. The recent list is the
+  // server's list, so reload it while the start screen is showing.
+  useEffect(() => {
+    if (!caps.serverCreateVault || screen !== "start") return;
+    let active = true;
+    const reload = () => {
+      Api.getPreferences()
+        .then((prefs) => {
+          if (active) setPreferences(prefs);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener(VAULTS_CHANGED_EVENT, reload);
+    return () => {
+      active = false;
+      window.removeEventListener(VAULTS_CHANGED_EVENT, reload);
+    };
+  }, [caps.serverCreateVault, screen]);
+
   // Toasts auto-dismiss after 5s (and can be closed manually).
   useEffect(() => {
     if (vaultView === "settings") settingsTitleRef.current?.focus({ preventScroll: true });
@@ -603,6 +629,9 @@ function App() {
     setUnlockPassword("");
     setScreen("unlock");
   };
+
+  // The dialog and the cryptography belong to the web shell.
+  const requestServerVault = () => window.dispatchEvent(new Event(CREATE_SERVER_VAULT_EVENT));
 
   const createVault = async (event: FormEvent) => {
     event.preventDefault();
@@ -1226,13 +1255,25 @@ function App() {
                     {t("newVault")}
                   </button>
                 )}
+                {caps.serverCreateVault && (
+                  <button className="primary-button" type="button" onClick={requestServerVault} disabled={busy}>
+                    <Plus size={18} aria-hidden />
+                    {t("newVault")}
+                  </button>
+                )}
               </section>
             )}
 
-            {(caps.createVault || caps.localFiles || caps.qrLink) && (
+            {((hasRecents && caps.serverCreateVault) || caps.createVault || caps.localFiles || caps.qrLink) && (
               <div className={`start-actions${hasRecents ? "" : " two"}`}>
                 {hasRecents && caps.createVault && (
                   <button className="primary-button" type="button" onClick={() => setCreateOpen(true)} disabled={busy}>
+                    <Plus size={18} aria-hidden />
+                    {t("newVault")}
+                  </button>
+                )}
+                {hasRecents && caps.serverCreateVault && (
+                  <button className="primary-button" type="button" onClick={requestServerVault} disabled={busy}>
                     <Plus size={18} aria-hidden />
                     {t("newVault")}
                   </button>

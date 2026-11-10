@@ -385,6 +385,29 @@ check('checkRollback: remote_rollback / invalid_revision / ok cases', () => {
   strictEqual(errorCodeOf(() => api.checkRollback(NaN, 0, undefined)), 'invalid_revision');
 });
 
+check('newVault: opens with the derived key, empty, revision 1, KDF within bounds', () => {
+  const envelope = api.newVault('a-new-master-password');
+  const header = JSON.parse(api.parseHeader(envelope));
+  strictEqual(api.checkKdfBounds(JSON.stringify(header.kdf)), undefined);
+  const key = api.deriveKey('a-new-master-password', JSON.stringify(header.kdf));
+  const data = JSON.parse(api.openWithKey(envelope, key));
+  strictEqual(data.entries.length, 0);
+  strictEqual(data.revision, 1);
+  ok(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(header.vaultId), 'vaultId is not a uuid');
+  strictEqual(errorCodeOf(() => api.openWithKey(envelope, api.deriveKey('another-password', JSON.stringify(header.kdf)))), WRONG_PASSWORD_CODE);
+});
+
+check('newVault: two calls give different vaultIds', () => {
+  const a = JSON.parse(api.parseHeader(api.newVault('a-new-master-password')));
+  const b = JSON.parse(api.parseHeader(api.newVault('a-new-master-password')));
+  notStrictEqual(a.vaultId, b.vaultId);
+});
+
+check('newVault: empty or too short password -> master_password_too_short', () => {
+  strictEqual(errorCodeOf(() => api.newVault('')), 'master_password_too_short');
+  strictEqual(errorCodeOf(() => api.newVault('short')), 'master_password_too_short');
+});
+
 check('parseHeader: malformed envelope -> vault_file_invalid', () => {
   strictEqual(errorCodeOf(() => api.parseHeader('{not json')), 'vault_file_invalid');
   strictEqual(errorCodeOf(() => api.parseHeader('{}')), 'vault_file_invalid');

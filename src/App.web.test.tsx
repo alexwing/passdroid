@@ -1,12 +1,17 @@
 import { StrictMode } from "react";
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import type { SyncConfig } from "./api";
+import type { Preferences, SyncConfig } from "./api";
 import { LanguageProvider } from "./context/LanguageContext";
 import { ThemeProvider } from "./context/ThemeContext";
-import { BRAND_CHANGED_EVENT, WEB_CAPABILITIES } from "./platform";
+import {
+  BRAND_CHANGED_EVENT,
+  CREATE_SERVER_VAULT_EVENT,
+  VAULTS_CHANGED_EVENT,
+  WEB_CAPABILITIES,
+} from "./platform";
 import { FakeBackend } from "./testing/fakeBackend";
 import { installFakeIpc, uninstallFakeIpc } from "./testing/installFakeIpc";
 
@@ -208,6 +213,59 @@ describe("Passdroid Web: UI compartida con capacidades web", () => {
     expect(screen.getByText("2 entradas")).toBeInTheDocument();
   });
 
+  it("con serverCreateVault aparece Nuevo vault y despacha el evento de crear vault", async () => {
+    globalThis.__PASSDROID_PLATFORM__ = { ...WEB_CAPABILITIES, serverCreateVault: true };
+    const user = userEvent.setup();
+    const onCreate = vi.fn();
+    window.addEventListener(CREATE_SERVER_VAULT_EVENT, onCreate);
+    try {
+      renderApp();
+      await user.click(await screen.findByRole("button", { name: "Nuevo vault" }));
+      expect(onCreate).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(CREATE_SERVER_VAULT_EVENT, onCreate);
+    }
+  });
+
+  it("con serverCreateVault y la lista vacía el botón sale en la tarjeta de inicio", async () => {
+    globalThis.__PASSDROID_PLATFORM__ = { ...WEB_CAPABILITIES, serverCreateVault: true };
+    backend = new FakeBackend({ preferences: { language: "es", recentVaults: [] } });
+    installFakeIpc(backend);
+    const onCreate = vi.fn();
+    window.addEventListener(CREATE_SERVER_VAULT_EVENT, onCreate);
+    try {
+      renderApp();
+      await userEvent.setup().click(await screen.findByRole("button", { name: "Nuevo vault" }));
+      expect(onCreate).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(CREATE_SERVER_VAULT_EVENT, onCreate);
+    }
+  });
+
+  it("con serverCreateVault, el evento de vaults cambiados recarga la lista de inicio", async () => {
+    globalThis.__PASSDROID_PLATFORM__ = { ...WEB_CAPABILITIES, serverCreateVault: true };
+    renderApp();
+    await screen.findByRole("button", { name: /server\/vault/ });
+    expect(screen.queryByRole("button", { name: /familia/ })).not.toBeInTheDocument();
+
+    // El servidor tiene un vault más: el backend cambia por detrás.
+    const prefs = (await backend.invoke("get_preferences")) as Preferences;
+    await backend.invoke("save_preferences", {
+      preferences: { ...prefs, recentVaults: [WEB_VAULT, "server://familia"] },
+    });
+    act(() => {
+      window.dispatchEvent(new Event(VAULTS_CHANGED_EVENT));
+    });
+
+    expect(await screen.findByRole("button", { name: /familia/ })).toBeInTheDocument();
+  });
+
+  it("sin serverCreateVault no aparece Nuevo vault", async () => {
+    renderApp();
+    await screen.findByRole("button", { name: /server\/vault/ });
+    expect(screen.queryByRole("button", { name: "Nuevo vault" })).not.toBeInTheDocument();
+  });
+
   describe("marca personalizable del servidor", () => {
     afterEach(() => {
       globalThis.__PASSDROID_BRAND__ = undefined;
@@ -354,6 +412,8 @@ describe("Escritorio: sin capacidades web la UI conserva sus opciones", () => {
 
     expect(await screen.findByRole("button", { name: "Abrir fichero" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Vincular por QR" })).toBeInTheDocument();
+    // Solo el botón de crear de siempre, no el de la web.
+    expect(screen.getAllByRole("button", { name: "Nuevo vault" })).toHaveLength(1);
 
     backend.setOpenDialogResult(DESKTOP_VAULT);
     await user.click(screen.getByRole("button", { name: "Abrir fichero" }));
