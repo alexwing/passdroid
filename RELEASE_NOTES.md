@@ -1,6 +1,16 @@
-# Passdroid v3.1.7
+# Passdroid v3.1.8
 
-## 🚀 What's New in v3.1.7
+## 🚀 What's New in v3.1.8
+
+### 📱 Phones with larger text
+- The entry list no longer scrolls sideways when an entry has a long title or user name without spaces (for example a long e-mail address): it is shortened with an ellipsis.
+- Tables in the notes preview keep words and values (IP addresses, user names) whole and scroll sideways inside their own box, like code blocks, instead of breaking them letter by letter.
+- Checked the start, unlock, list, editor and settings screens on a 375 px phone with text at 110 %.
+
+---
+
+
+## 📦 Prior v3.1.7 Highlights
 
 ### 📋 Copy an entry without its password
 - A new button in the entry header copies the entry as plain text to share with someone: title, user, URL and, at the end, the notes. The password is **never** included; the text says it is sent separately so you can paste it on its own.
