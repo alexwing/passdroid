@@ -270,6 +270,11 @@ const es = {
   exportLocationDesktop: "Elegirás dónde guardar el fichero.",
   qrLinkShort: "Vincular por QR",
   qrAlt: "Código QR con la configuración de sincronización",
+  // Vincular el teléfono: QR de la vista de ajustes en la web
+  qrShareTitle: "Vincular el teléfono",
+  qrShareBody: "Escanea este código con Passdroid en el teléfono para descargar este vault. Contiene la contraseña del FTP: no lo muestres a nadie.",
+  qrShareButton: "Mostrar QR",
+  qrShareNoSync: "Este vault no tiene configurada la sincronización FTP. Configúrala desde la app de escritorio para poder vincular el teléfono.",
   vaultIcon_safe: "Caja fuerte",
   vaultIcon_lock: "Candado",
   vaultIcon_key: "Llave",

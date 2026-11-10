@@ -74,7 +74,7 @@ import { Toast } from "./components/Toast";
 import { TitleBar } from "./components/TitleBar";
 import { NotesBoundary } from "./components/NotesPlain";
 import { passwordStrength, type StrengthLevel } from "./utils/passwordStrength";
-import { VAULT_CHANGED_EVENT, VAULT_LOCK_EVENT, platform } from "./platform";
+import { VAULT_CHANGED_EVENT, VAULT_LOCK_EVENT, platform, useBrand } from "./platform";
 
 // Markdown pulls in react-markdown + remark-gfm (~170 kB), so it loads on first preview.
 const NotesMarkdown = lazy(() => import("./components/NotesMarkdown").then((m) => ({ default: m.NotesMarkdown })));
@@ -201,6 +201,8 @@ const emptyEntry = (): VaultEntry => ({
 function App() {
   // Capabilities of the host (desktop/Android by default, Passdroid Web when it says so).
   const caps = platform();
+  // Web brand (name, tagline, logo) set by the server administrator; empty elsewhere.
+  const b = useBrand();
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
   const [screen, setScreen] = useState<Screen>("start");
   const [vaultPath, setVaultPath] = useState("");
@@ -266,6 +268,9 @@ function App() {
   const [qrShowModalOpen, setQrShowModalOpen] = useState(false);
   const [qrLinkConfig, setQrLinkConfig] = useState<SyncConfig | null>(null);
   const [qrLinkPassword, setQrLinkPassword] = useState("");
+  // Web "Vincular el teléfono": the FTP config fetched when the user asks for the
+  // QR. Its own state (never syncConfig) and dropped as soon as the modal closes.
+  const [phoneQrConfig, setPhoneQrConfig] = useState<SyncConfig | null>(null);
 
   useEffect(() => {
     Api.getPreferences()
@@ -293,6 +298,8 @@ function App() {
       setUnlockError("");
       setVaultView("entries");
       setChangePasswordForm({ oldPassword: "", newPassword: "", repeatPassword: "" });
+      // A phone-link QR carries the FTP password: it must not outlive the unlock.
+      setPhoneQrConfig(null);
       setScreen("unlock");
     };
     const handleHidden = () => {
@@ -995,6 +1002,23 @@ function App() {
     setImportPreview(null);
   };
 
+  // Web: the FTP config is read only now, when the user asks for the phone QR
+  // (not on unlock or on opening settings). Without a usable FTP config, say so.
+  const showPhoneQr = async () => {
+    setBusy(true);
+    let config: SyncConfig | null;
+    try {
+      config = await Api.getSyncConfig();
+    } catch (error) {
+      setNotice({ kind: "error", text: formatError(error, t) });
+      return;
+    } finally {
+      setBusy(false);
+    }
+    if (config?.enabled && config.host) setPhoneQrConfig(config);
+    else setNotice({ kind: "error", text: t("qrShareNoSync") });
+  };
+
   // Handle a scanned QR code: parse payload and prompt for master password
   const handleQrScan = (text: string) => {
     setQrScannerOpen(false);
@@ -1128,7 +1152,7 @@ function App() {
   return (
     <div className={`app-shell${showTitleBar ? " has-titlebar" : ""}`}>
       {showTitleBar && (
-        <TitleBar title={t("appName")}>
+        <TitleBar title={b.name ?? t("appName")}>
           {screen === "vault" && <span className="pill line titlebar-vault">{vaultName(vaultPath)}</span>}
         </TitleBar>
       )}
@@ -1137,10 +1161,10 @@ function App() {
         <main className="start-layout">
           <div className="start-body">
             <section className="hero">
-              <img className="hero-logo" src={appIcon} alt="" width={64} height={64} />
+              <img className="hero-logo" src={b.logoUrl ?? appIcon} alt="" width={64} height={64} />
               <div>
-                <span className="eyebrow">{t("appTagline")}</span>
-                <h1>{t("appName")}</h1>
+                <span className="eyebrow">{b.tagline ?? t("appTagline")}</span>
+                <h1>{b.name ?? t("appName")}</h1>
               </div>
             </section>
 
@@ -1672,7 +1696,7 @@ function App() {
           {vaultView === "settings" && (
             <section className="settings-panel" aria-labelledby="settings-title">
               <header className="settings-head">
-                <span className="eyebrow">{t("appName")}</span>
+                <span className="eyebrow">{b.name ?? t("appName")}</span>
                 <h2 id="settings-title" tabIndex={-1} ref={settingsTitleRef}>
                   {t("settings")}
                 </h2>
@@ -1758,6 +1782,20 @@ function App() {
                         </div>
                         <button className="secondary-button sm" type="button" onClick={() => setIconPickerOpen(true)} disabled={busy}>
                           {t("chooseIcon")}
+                        </button>
+                      </div>
+                    )}
+                    {caps.qrShare && (
+                      <div className="card setting">
+                        <span className="tile">
+                          <QrCode size={18} aria-hidden />
+                        </span>
+                        <div className="setting-text">
+                          <b>{t("qrShareTitle")}</b>
+                          <span>{t("qrShareBody")}</span>
+                        </div>
+                        <button className="secondary-button sm" type="button" onClick={showPhoneQr} disabled={busy}>
+                          {t("qrShareButton")}
                         </button>
                       </div>
                     )}
@@ -1955,7 +1993,7 @@ function App() {
       )}
 
       {caps.createVault && createOpen && (
-        <Modal title={t("newVault")} eyebrow={t("appName")} onClose={closeCreate}>
+        <Modal title={t("newVault")} eyebrow={b.name ?? t("appName")} onClose={closeCreate}>
           <form className="stack-form" onSubmit={createVault}>
             {isAndroid ? (
               <label>
@@ -2201,6 +2239,11 @@ function App() {
           syncConfig={syncConfig}
           onClose={() => setQrShowModalOpen(false)}
         />
+      )}
+
+      {/* Web: QR to link a phone. Mounted only while open, so its QR image is dropped with the config. */}
+      {caps.qrShare && phoneQrConfig && (
+        <QrVaultModal isOpen syncConfig={phoneQrConfig} onClose={() => setPhoneQrConfig(null)} />
       )}
 
       {/* QR Link Password Prompt Modal */}

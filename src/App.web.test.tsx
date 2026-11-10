@@ -3,9 +3,10 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "./App";
+import type { SyncConfig } from "./api";
 import { LanguageProvider } from "./context/LanguageContext";
 import { ThemeProvider } from "./context/ThemeContext";
-import { WEB_CAPABILITIES } from "./platform";
+import { BRAND_CHANGED_EVENT, WEB_CAPABILITIES } from "./platform";
 import { FakeBackend } from "./testing/fakeBackend";
 import { installFakeIpc, uninstallFakeIpc } from "./testing/installFakeIpc";
 
@@ -205,6 +206,139 @@ describe("Passdroid Web: UI compartida con capacidades web", () => {
       "Otro dispositivo guardó cambios a la vez y no se pudieron fusionar. Inténtalo de nuevo.",
     );
     expect(screen.getByText("2 entradas")).toBeInTheDocument();
+  });
+
+  describe("marca personalizable del servidor", () => {
+    afterEach(() => {
+      globalThis.__PASSDROID_BRAND__ = undefined;
+    });
+
+    it("la pantalla de inicio muestra el nombre, el lema y el logotipo que fija el servidor", () => {
+      globalThis.__PASSDROID_BRAND__ = {
+        name: "ICARIA Vault",
+        tagline: "Claves del estudio",
+        logoUrl: "/api/branding/logo?v=abc",
+      };
+      renderApp();
+
+      expect(screen.getByRole("heading", { level: 1, name: "ICARIA Vault" })).toBeInTheDocument();
+      expect(screen.getByText("Claves del estudio", { selector: ".eyebrow" })).toBeInTheDocument();
+      expect(document.querySelector(".hero-logo")).toHaveAttribute("src", "/api/branding/logo?v=abc");
+    });
+
+    it("un cambio de marca se aplica sin remontar la pantalla", () => {
+      globalThis.__PASSDROID_BRAND__ = { name: "ICARIA Vault" };
+      renderApp();
+      const heading = screen.getByRole("heading", { level: 1 });
+
+      act(() => {
+        globalThis.__PASSDROID_BRAND__ = { name: "Bufete Sur", tagline: "Claves compartidas" };
+        window.dispatchEvent(new Event(BRAND_CHANGED_EVENT));
+      });
+
+      expect(screen.getByRole("heading", { level: 1 })).toBe(heading);
+      expect(heading).toHaveTextContent("Bufete Sur");
+      expect(screen.getByText("Claves compartidas", { selector: ".eyebrow" })).toBeInTheDocument();
+    });
+
+    it("sin marca del servidor se ven el nombre, el lema y el icono de siempre", async () => {
+      renderApp();
+      // Las preferencias (idioma es) llegan asíncronas: esperar a que aparezca el reciente.
+      await screen.findByRole("button", { name: /server\/vault/ });
+
+      expect(screen.getByRole("heading", { level: 1, name: "Passdroid Next" })).toBeInTheDocument();
+      expect(screen.getByText("Gestor de contraseñas", { selector: ".eyebrow" })).toBeInTheDocument();
+      expect(document.querySelector(".hero-logo")?.getAttribute("src")).toContain("passdroid");
+    });
+  });
+
+  describe("vincular el teléfono desde Ajustes", () => {
+    const FTP_CONFIG: SyncConfig = {
+      enabled: true,
+      protocol: "ftps",
+      host: "ftp.example.com",
+      port: 21,
+      username: "alex",
+      password: "ftp-secret",
+      remoteDir: "vault",
+      remoteFile: "passdroid.pdvault",
+    };
+
+    beforeEach(() => {
+      globalThis.__PASSDROID_PLATFORM__ = { ...WEB_CAPABILITIES, qrShare: true };
+    });
+
+    it("en General hay una tarjeta que pide la configuración FTP solo al pulsar Mostrar QR", async () => {
+      const user = userEvent.setup();
+      // Mismo vault, ahora con sincronización FTP configurada en el servidor.
+      backend.seedVault({
+        path: WEB_VAULT,
+        masterPassword: MASTER,
+        entries: [{ title: "GitHub", username: "alexwing", password: "gh-secret" }],
+        sync: FTP_CONFIG,
+      });
+      renderApp();
+      await unlockFromRecent(user);
+      await openSettings(user);
+
+      expect(screen.getByText("Vincular el teléfono")).toBeInTheDocument();
+      expect(screen.queryByRole("tab", { name: /Sincronización/ })).not.toBeInTheDocument();
+      expect(backend.calls.map((call) => call.cmd)).not.toContain("get_sync_config");
+
+      await user.click(screen.getByRole("button", { name: "Mostrar QR" }));
+
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByRole("img", { name: "Código QR con la configuración de sincronización" })).toBeInTheDocument();
+      expect(backend.calls.filter((call) => call.cmd === "get_sync_config")).toHaveLength(1);
+    });
+
+    it("al cerrar el modal se descarta la configuración: volver a pulsar la pide de nuevo", async () => {
+      const user = userEvent.setup();
+      backend.seedVault({
+        path: WEB_VAULT,
+        masterPassword: MASTER,
+        entries: [{ title: "GitHub", username: "alexwing", password: "gh-secret" }],
+        sync: FTP_CONFIG,
+      });
+      renderApp();
+      await unlockFromRecent(user);
+      await openSettings(user);
+
+      await user.click(screen.getByRole("button", { name: "Mostrar QR" }));
+      await screen.findByRole("dialog");
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Mostrar QR" }));
+      await screen.findByRole("dialog");
+      expect(backend.calls.filter((call) => call.cmd === "get_sync_config")).toHaveLength(2);
+    });
+
+    it("sin configuración FTP avisa y no abre el modal", async () => {
+      const user = userEvent.setup();
+      // El vault sembrado en beforeEach no tiene sincronización: get_sync_config devuelve null.
+      renderApp();
+      await unlockFromRecent(user);
+      await openSettings(user);
+
+      await user.click(screen.getByRole("button", { name: "Mostrar QR" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Este vault no tiene configurada la sincronización FTP.",
+      );
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("con qrShare desactivado no aparece la tarjeta", async () => {
+      const user = userEvent.setup();
+      globalThis.__PASSDROID_PLATFORM__ = WEB_CAPABILITIES;
+      renderApp();
+      await unlockFromRecent(user);
+      await openSettings(user);
+
+      expect(screen.queryByText("Vincular el teléfono")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Mostrar QR" })).not.toBeInTheDocument();
+    });
   });
 });
 

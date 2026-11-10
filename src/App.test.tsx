@@ -156,4 +156,15 @@ describe("Passdroid Next: flujo de la UI con IPC falsa", () => {
     const deleted = backend.snapshot().entries.find((e) => e.title === "Banco");
     expect(deleted?.deletedAt).toEqual(expect.any(String));
   });
+
+  it("en escritorio Ajustes > General no ofrece vincular el teléfono (ese QR está en Sincronización)", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await unlockViaOpenDialog(user);
+
+    await user.click(screen.getAllByRole("button", { name: "Ajustes" })[0]);
+
+    expect(screen.queryByText("Vincular el teléfono")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mostrar QR" })).not.toBeInTheDocument();
+  });
 });

@@ -272,6 +272,11 @@ const en: Record<keyof typeof es, string> = {
   exportLocationDesktop: "You will choose where to save the file.",
   qrLinkShort: "Link by QR",
   qrAlt: "QR code with the sync configuration",
+  // Link the phone: QR in the settings view on the web
+  qrShareTitle: "Link your phone",
+  qrShareBody: "Scan this code with Passdroid on your phone to download this vault. It contains the FTP password: do not show it to anyone.",
+  qrShareButton: "Show QR",
+  qrShareNoSync: "This vault has no FTP sync configured. Set it up in the desktop app to link your phone.",
   vaultIcon_safe: "Safe",
   vaultIcon_lock: "Padlock",
   vaultIcon_key: "Key",
