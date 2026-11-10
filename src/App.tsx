@@ -4,6 +4,7 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Cloud,
   Copy,
   CreditCard,
@@ -729,6 +730,19 @@ function App() {
     setNotice({ kind: "success", text: t("copied") });
   };
 
+  // Plain-text summary of the entry to share with someone: every field except
+  // the password (which is pasted separately), notes last.
+  const copyEntryWithoutPassword = async () => {
+    const lines = [draft.title.trim() || t("untitled")];
+    if (draft.username.trim()) lines.push(`${t("username")}: ${draft.username.trim()}`);
+    if (draft.url.trim()) lines.push(`${t("url")}: ${draft.url.trim()}`);
+    if (draft.password) lines.push(`${t("password")}: ${t("copyEntryPasswordApart")}`);
+    const notes = draft.notes.trim();
+    if (notes) lines.push("", `${t("notes")}:`, notes);
+    await navigator.clipboard.writeText(lines.join("\n"));
+    setNotice({ kind: "success", text: t("copyEntryDone") });
+  };
+
   const isValidUrl = (value: string) => {
     try {
       const parsed = new URL(value.trim());
@@ -1423,6 +1437,16 @@ function App() {
                         {t(strengthKey(draftStrength))}
                       </span>
                     )}
+                    <button
+                      className="icon-button ed-copy"
+                      type="button"
+                      onClick={copyEntryWithoutPassword}
+                      disabled={!draft.title.trim() && !draft.username.trim() && !draft.url.trim() && !draft.notes.trim()}
+                      title={t("copyEntry")}
+                      aria-label={t("copyEntry")}
+                    >
+                      <ClipboardList size={18} aria-hidden />
+                    </button>
                     <button
                       className="icon-button danger ed-del-mobile"
                       type="button"

@@ -1,6 +1,20 @@
-# Passdroid v3.1.6
+# Passdroid v3.1.7
 
-## 🚀 What's New in v3.1.6
+## 🚀 What's New in v3.1.7
+
+### 📋 Copy an entry without its password
+- A new button in the entry header copies the entry as plain text to share with someone: title, user, URL and, at the end, the notes. The password is **never** included; the text says it is sent separately so you can paste it on its own.
+- It copies what is on screen (including unsaved edits) and skips empty fields.
+
+### 📱 Dialogs that fit on phones
+- The master-password prompt after scanning a link QR no longer overflows on the right: a long "server • file" label is now shortened with an ellipsis.
+- Dialog titles that come from your data (entry title when deleting, vault name when removing it from the list) wrap instead of pushing the close button out.
+- Single-column forms can no longer grow wider than their dialog, whatever their content.
+
+---
+
+
+## 📦 Prior v3.1.6 Highlights
 
 ### 🔗 QR linking keeps the scanned sync settings (important)
 - **The bug**: linking a device by QR downloaded the remote vault and saved it as is, so the vault on disk kept the sync settings it was uploaded with (for example plain FTP). The FTPS settings from the QR only lived in memory and were gone the next time the vault was opened.
