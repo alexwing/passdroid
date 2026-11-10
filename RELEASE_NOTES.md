@@ -1,6 +1,16 @@
-# Passdroid v3.1.8
+# Passdroid v3.1.9
 
-## 🚀 What's New in v3.1.8
+## 🚀 What's New in v3.1.9
+
+### 🔗 QR linking with a vault at the FTP root
+- **The bug**: when the vault lived in the root folder of the FTP server (empty remote folder), the device that scanned the link QR read it as the default `vault` folder, created `/vault` on the server and did not find the file.
+- The QR now sends the root as `/`, which every version (including older ones) keeps and treats as the root.
+- When reading a QR, the `vault` default is only used if the folder field is missing; an empty value or `/` means the root.
+
+---
+
+
+## 📦 Prior v3.1.8 Highlights
 
 ### 📱 Phones with larger text
 - The entry list no longer scrolls sideways when an entry has a long title or user name without spaces (for example a long e-mail address): it is shortened with an ellipsis.
