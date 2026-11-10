@@ -220,7 +220,7 @@ function App() {
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [vaultView, setVaultView] = useState<"entries" | "settings">("entries");
   const [deletePromptOpen, setDeletePromptOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
   const [generatorOpen, setGeneratorOpen] = useState(false);
@@ -254,6 +254,7 @@ function App() {
   // Suppress the auto-lock-on-background while a native file picker is in front
   // (the picker backgrounds the webview, which would otherwise trigger a lock).
   const suppressLock = useRef(false);
+  const settingsTitleRef = useRef<HTMLHeadingElement>(null);
 
   // i18n and theme are now managed by their respective contexts (LanguageProvider / ThemeProvider).
   const { t, language, resolved, setLanguage } = useTranslation();
@@ -289,6 +290,8 @@ function App() {
       setSyncState("idle");
       setUnlockPassword("");
       setUnlockError("");
+      setVaultView("entries");
+      setChangePasswordForm({ oldPassword: "", newPassword: "", repeatPassword: "" });
       setScreen("unlock");
     };
     const handleHidden = () => {
@@ -332,6 +335,10 @@ function App() {
   }, [caps.web, screen]);
 
   // Toasts auto-dismiss after 5s (and can be closed manually).
+  useEffect(() => {
+    if (vaultView === "settings") settingsTitleRef.current?.focus({ preventScroll: true });
+  }, [vaultView]);
+
   useEffect(() => {
     if (!notice) return;
     const id = window.setTimeout(() => setNotice(null), 5000);
@@ -636,6 +643,7 @@ function App() {
       setEditing(false);
       setSyncBadge(path, "local");
       setCreateOpen(false);
+      setVaultView("entries");
       setScreen("vault");
     }
   };
@@ -672,6 +680,7 @@ function App() {
       setDraft(emptyEntry());
       setSelectedId("");
       setEditing(false);
+      setVaultView("entries");
       setScreen("vault");
       // Hosts without FTP sync (web) never read or check the sync config here.
       if (caps.ftpSync) {
@@ -711,6 +720,8 @@ function App() {
     setLastSyncAt(null);
     setSyncPrompt(null);
     setEditing(false);
+    setVaultView("entries");
+    setChangePasswordForm({ oldPassword: "", newPassword: "", repeatPassword: "" });
     setScreen("start");
   };
 
@@ -898,6 +909,9 @@ function App() {
   const useGeneratedPassword = () => {
     if (!generatedPassword) return;
     setDraft((entry) => ({ ...entry, password: generatedPassword }));
+    // Show where the password landed: back to entries with the editor open.
+    showEntries();
+    setEditing(true);
     setGeneratorOpen(false);
   };
 
@@ -944,8 +958,14 @@ function App() {
     }
   };
 
-  const closeSettings = () => {
-    setSettingsOpen(false);
+  const openSettings = () => {
+    setVaultView("settings");
+    setEditing(false);
+  };
+
+  const showEntries = () => {
+    setVaultView("entries");
+    setEditing(false);
     setChangePasswordForm({ oldPassword: "", newPassword: "", repeatPassword: "" });
   };
 
@@ -1010,11 +1030,13 @@ function App() {
       const contents = await Api.downloadFtpVault(config);
       // 2. Unlock & verify master password
       const status = await Api.unlockVault(contents, password);
-      // 3. Save local vault file
-      await writeTextFile(path, contents);
-      // 4. Update sync config inside vault
-      await Api.setSyncConfig(config).catch(() => {});
-      return { path, status };
+      // 3. Store the scanned sync config inside the vault. The downloaded copy
+      //    still carries whatever config the remote was saved with (e.g. plain
+      //    FTP), so the file written to disk must be the re-sealed snapshot.
+      const snap = await Api.setSyncConfig(config);
+      // 4. Save local vault file
+      await writeTextFile(path, snap.contents);
+      return { path, status: snap.status };
     }, "qrVaultLinked");
 
     if (success) {
@@ -1032,6 +1054,7 @@ function App() {
       setDraft(emptyEntry());
       setSelectedId("");
       setEditing(false);
+      setVaultView("entries");
       setScreen("vault");
     }
   };
@@ -1043,6 +1066,8 @@ function App() {
   const startNewEntry = () => {
     setSelectedId("");
     setDraft(emptyEntry());
+    setVaultView("entries");
+    setChangePasswordForm({ oldPassword: "", newPassword: "", repeatPassword: "" });
     setEditing(true);
   };
 
@@ -1270,12 +1295,12 @@ function App() {
             </div>
             <nav className="nav" aria-label={t("navLabel")}>
               <NavButton
-                active
+                active={vaultView === "entries"}
                 icon={<List size={16} aria-hidden />}
                 label={t("entriesTitle")}
                 collapsed={railCollapsed}
                 trailing={<span className="nav-count">{entries.length}</span>}
-                onClick={() => setEditing(false)}
+                onClick={showEntries}
               />
               <NavButton
                 icon={<Sparkles size={16} aria-hidden />}
@@ -1314,10 +1339,11 @@ function App() {
                 />
               )}
               <NavButton
+                active={vaultView === "settings"}
                 icon={<Settings size={16} aria-hidden />}
                 label={t("settings")}
                 collapsed={railCollapsed}
-                onClick={() => setSettingsOpen(true)}
+                onClick={openSettings}
               />
             </nav>
             <div className="rail-spacer" />
@@ -1345,277 +1371,529 @@ function App() {
             </div>
           </aside>
 
-          <section className="listcol">
-            <div className="mtop">
-              <span className="vault-tile">
-                <VaultGlyph icon={vaultIconKey} size={18} />
-              </span>
-              <div className="mtop-text">
-                <h2>{vaultName(vaultPath)}</h2>
-                <div className="status">
-                  <span className={`dot ${syncStatus.tone}`} aria-hidden />
-                  {syncStatus.text} · {entryCount}
-                </div>
-              </div>
-              {caps.ftpSync && syncConfig?.enabled && (
-                <button
-                  className={`icon-button round sync-button ${syncState}${syncing ? " pulse-ring" : ""}`}
-                  type="button"
-                  title={syncStatus.text}
-                  aria-label={t("syncNow")}
-                  onClick={manualSync}
-                  disabled={busy || syncing}
-                >
-                  <RefreshCw size={18} className={syncing ? "spin" : ""} aria-hidden />
-                </button>
-              )}
-              <button className="icon-button round" type="button" title={t("lock")} aria-label={t("lock")} onClick={lockVault}>
-                <Lock size={18} aria-hidden />
-              </button>
-            </div>
-
-            <div className="listhead">
-              <div className="list-top">
-                <h2>{t("entriesTitle")}</h2>
-                <button className="primary-button sm" type="button" onClick={startNewEntry}>
-                  <Plus size={14} aria-hidden />
-                  {t("newShort")}
-                </button>
-              </div>
-              <div className="search-box">
-                <Search size={16} aria-hidden />
-                <input
-                  aria-label={t("search")}
-                  placeholder={t("search")}
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="entry-list">
-              {filteredEntries.map((entry) => (
-                <button
-                  className={`entry-row ${entry.id === selectedId ? "active" : ""}`}
-                  key={entry.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedId(entry.id);
-                    setEditing(true);
-                  }}
-                >
-                  <span className="av" style={hueStyle(entry.title)} aria-hidden>
-                    {initialOf(entry.title)}
+          {vaultView === "entries" && (
+            <>
+              <section className="listcol">
+                <div className="mtop">
+                  <span className="vault-tile">
+                    <VaultGlyph icon={vaultIconKey} size={18} />
                   </span>
-                  <span className="tx">
-                    <b>{entry.title}</b>
-                    <span>{entry.username || entry.url}</span>
-                  </span>
-                  {(entry.conflict || weakIds.has(entry.id)) && (
-                    <span className="bd">
-                      {entry.conflict && <em className="pill bad">{t("conflict")}</em>}
-                      {weakIds.has(entry.id) && <em className="pill warn">{t("strengthWeak")}</em>}
-                    </span>
-                  )}
-                </button>
-              ))}
-              {entries.length === 0 && <p className="empty-state">{t("emptyVault")}</p>}
-              {entries.length > 0 && filteredEntries.length === 0 && (
-                <p className="empty-state">{t("noSearchResults")}</p>
-              )}
-            </div>
-
-            <div className="listfoot">
-              <span className="status">{t("entriesShown", { shown: filteredEntries.length, total: entries.length })}</span>
-              <span className="status">
-                <ShieldCheck size={14} aria-hidden />
-                {t("encrypted")}
-              </span>
-            </div>
-          </section>
-
-          <section className={`editor-panel ${editing ? "editing" : ""}`}>
-            <form className="entry-form" onSubmit={saveEntry}>
-              <header className="ed-head">
-                <button className="icon-button ed-back" type="button" onClick={() => setEditing(false)} title={t("back")} aria-label={t("back")}>
-                  <ChevronLeft size={22} aria-hidden />
-                </button>
-                <span className="av lg" style={hueStyle(draft.title)} aria-hidden>
-                  {initialOf(draft.title)}
-                </span>
-                <div className="ed-title">
-                  <span className="eyebrow">{draft.id ? t("editEntry") : t("newEntry")}</span>
-                  <h2>{draft.title.trim() || t("untitled")}</h2>
-                </div>
-                {draftStrength > 0 && (
-                  <span className={`pill ed-strength ${draftTone === "weak" ? "warn" : draftTone === "fair" ? "line" : "ok"}`}>
-                    {draftTone === "weak" && <AlertTriangle size={12} aria-hidden />}
-                    {draftTone === "strong" && <ShieldCheck size={12} aria-hidden />}
-                    {t(strengthKey(draftStrength))}
-                  </span>
-                )}
-                <button
-                  className="icon-button danger ed-del-mobile"
-                  type="button"
-                  onClick={() => setDeletePromptOpen(true)}
-                  disabled={!draft.id || busy}
-                  title={t("delete")}
-                  aria-label={t("delete")}
-                >
-                  <Trash2 size={18} aria-hidden />
-                </button>
-              </header>
-
-              <div className="ed-body">
-                <label className="span-2">
-                  <span>{t("title")}</span>
-                  <input
-                    value={draft.title}
-                    onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-                    autoComplete="off"
-                  />
-                </label>
-                <label>
-                  <span>{t("username")}</span>
-                  <div className="password-row">
-                    <input
-                      value={draft.username}
-                      onChange={(event) => setDraft({ ...draft, username: event.target.value })}
-                      autoComplete="username"
-                    />
-                    <button className="icon-button" type="button" title={t("copy")} aria-label={t("copy")} onClick={() => copyToClipboard(draft.username)}>
-                      <Copy size={16} aria-hidden />
-                    </button>
-                  </div>
-                </label>
-                <label>
-                  <span>{t("password")}</span>
-                  <div className="password-row">
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={draft.password}
-                      onChange={(event) => setDraft({ ...draft, password: event.target.value })}
-                      autoComplete="new-password"
-                    />
-                    <button
-                      className="icon-button"
-                      type="button"
-                      title={showPassword ? t("hidePassword") : t("showPassword")}
-                      aria-label={showPassword ? t("hidePassword") : t("showPassword")}
-                      onClick={() => setShowPassword((value) => !value)}
-                    >
-                      {showPassword ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
-                    </button>
-                    <button className="icon-button" type="button" title={t("copy")} aria-label={t("copy")} onClick={() => copyToClipboard(draft.password)}>
-                      <Copy size={16} aria-hidden />
-                    </button>
-                    <button className="icon-button" type="button" title={t("generator")} aria-label={t("generator")} onClick={() => setGeneratorOpen(true)}>
-                      <Sparkles size={16} aria-hidden />
-                    </button>
-                  </div>
-                  <StrengthMeter level={draftStrength} showLabel />
-                </label>
-                <label className="span-2">
-                  <span>{t("url")}</span>
-                  <div className="password-row">
-                    <Globe2 className="lead" size={16} aria-hidden />
-                    <input
-                      value={draft.url}
-                      onChange={(event) => setDraft({ ...draft, url: event.target.value })}
-                      autoComplete="url"
-                    />
-                    <button
-                      className="icon-button"
-                      type="button"
-                      title={t("openUrl")}
-                      aria-label={t("openUrl")}
-                      onClick={openDraftUrl}
-                      disabled={!isValidUrl(draft.url)}
-                    >
-                      <ExternalLink size={16} aria-hidden />
-                    </button>
-                  </div>
-                </label>
-                <div className="span-2 notes-field">
-                  <div className="notes-head">
-                    <label htmlFor="entry-notes">
-                      <span>{t("notes")}</span>
-                    </label>
-                    <div className="segmented sm" role="group" aria-label={t("notesView")}>
-                      <button
-                        className={notesView === "edit" ? "active" : ""}
-                        type="button"
-                        aria-pressed={notesView === "edit"}
-                        onClick={() => saveUiPreference({ notesView: "edit" })}
-                      >
-                        <Edit3 size={14} aria-hidden />
-                        {t("notesEdit")}
-                      </button>
-                      <button
-                        className={notesView === "preview" ? "active" : ""}
-                        type="button"
-                        aria-pressed={notesView === "preview"}
-                        onClick={() => saveUiPreference({ notesView: "preview" })}
-                      >
-                        <Eye size={14} aria-hidden />
-                        {t("notesPreview")}
-                      </button>
+                  <div className="mtop-text">
+                    <h2>{vaultName(vaultPath)}</h2>
+                    <div className="status">
+                      <span className={`dot ${syncStatus.tone}`} aria-hidden />
+                      {syncStatus.text} · {entryCount}
                     </div>
                   </div>
-                  {notesView === "edit" ? (
-                    <textarea
-                      id="entry-notes"
-                      value={draft.notes}
-                      placeholder={t("notesPlaceholder")}
-                      onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
+                  {caps.ftpSync && syncConfig?.enabled && (
+                    <button
+                      className={`icon-button round sync-button ${syncState}${syncing ? " pulse-ring" : ""}`}
+                      type="button"
+                      title={syncStatus.text}
+                      aria-label={t("syncNow")}
+                      onClick={manualSync}
+                      disabled={busy || syncing}
+                    >
+                      <RefreshCw size={18} className={syncing ? "spin" : ""} aria-hidden />
+                    </button>
+                  )}
+                  <button className="icon-button round" type="button" title={t("lock")} aria-label={t("lock")} onClick={lockVault}>
+                    <Lock size={18} aria-hidden />
+                  </button>
+                </div>
+
+                <div className="listhead">
+                  <div className="list-top">
+                    <h2>{t("entriesTitle")}</h2>
+                    <button className="primary-button sm" type="button" onClick={startNewEntry}>
+                      <Plus size={14} aria-hidden />
+                      {t("newShort")}
+                    </button>
+                  </div>
+                  <div className="search-box">
+                    <Search size={16} aria-hidden />
+                    <input
+                      aria-label={t("search")}
+                      placeholder={t("search")}
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
                     />
-                  ) : (
-                    <div className="notes-preview" id="entry-notes" role="region" aria-label={t("notes")} tabIndex={0}>
-                      {draft.notes.trim() ? (
-                        <NotesBoundary key={draft.id} source={draft.notes}>
-                          <Suspense fallback={null}>
-                            <NotesMarkdown source={draft.notes} onOpenLink={openExternal} />
-                          </Suspense>
-                        </NotesBoundary>
+                  </div>
+                </div>
+
+                <div className="entry-list">
+                  {filteredEntries.map((entry) => (
+                    <button
+                      className={`entry-row ${entry.id === selectedId ? "active" : ""}`}
+                      key={entry.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedId(entry.id);
+                        setEditing(true);
+                      }}
+                    >
+                      <span className="av" style={hueStyle(entry.title)} aria-hidden>
+                        {initialOf(entry.title)}
+                      </span>
+                      <span className="tx">
+                        <b>{entry.title}</b>
+                        <span>{entry.username || entry.url}</span>
+                      </span>
+                      {(entry.conflict || weakIds.has(entry.id)) && (
+                        <span className="bd">
+                          {entry.conflict && <em className="pill bad">{t("conflict")}</em>}
+                          {weakIds.has(entry.id) && <em className="pill warn">{t("strengthWeak")}</em>}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                  {entries.length === 0 && <p className="empty-state">{t("emptyVault")}</p>}
+                  {entries.length > 0 && filteredEntries.length === 0 && (
+                    <p className="empty-state">{t("noSearchResults")}</p>
+                  )}
+                </div>
+
+                <div className="listfoot">
+                  <span className="status">{t("entriesShown", { shown: filteredEntries.length, total: entries.length })}</span>
+                  <span className="status">
+                    <ShieldCheck size={14} aria-hidden />
+                    {t("encrypted")}
+                  </span>
+                </div>
+              </section>
+
+              <section className={`editor-panel ${editing ? "editing" : ""}`}>
+                <form className="entry-form" onSubmit={saveEntry}>
+                  <header className="ed-head">
+                    <button className="icon-button ed-back" type="button" onClick={() => setEditing(false)} title={t("back")} aria-label={t("back")}>
+                      <ChevronLeft size={22} aria-hidden />
+                    </button>
+                    <span className="av lg" style={hueStyle(draft.title)} aria-hidden>
+                      {initialOf(draft.title)}
+                    </span>
+                    <div className="ed-title">
+                      <span className="eyebrow">{draft.id ? t("editEntry") : t("newEntry")}</span>
+                      <h2>{draft.title.trim() || t("untitled")}</h2>
+                    </div>
+                    {draftStrength > 0 && (
+                      <span className={`pill ed-strength ${draftTone === "weak" ? "warn" : draftTone === "fair" ? "line" : "ok"}`}>
+                        {draftTone === "weak" && <AlertTriangle size={12} aria-hidden />}
+                        {draftTone === "strong" && <ShieldCheck size={12} aria-hidden />}
+                        {t(strengthKey(draftStrength))}
+                      </span>
+                    )}
+                    <button
+                      className="icon-button danger ed-del-mobile"
+                      type="button"
+                      onClick={() => setDeletePromptOpen(true)}
+                      disabled={!draft.id || busy}
+                      title={t("delete")}
+                      aria-label={t("delete")}
+                    >
+                      <Trash2 size={18} aria-hidden />
+                    </button>
+                  </header>
+
+                  <div className="ed-body">
+                    <div className="ed-fields">
+                        <label className="span-2">
+                          <span>{t("title")}</span>
+                          <input
+                            value={draft.title}
+                            onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+                            autoComplete="off"
+                          />
+                        </label>
+                        <label>
+                          <span>{t("username")}</span>
+                          <div className="password-row">
+                            <input
+                              value={draft.username}
+                              onChange={(event) => setDraft({ ...draft, username: event.target.value })}
+                              autoComplete="username"
+                            />
+                            <button className="icon-button" type="button" title={t("copy")} aria-label={t("copy")} onClick={() => copyToClipboard(draft.username)}>
+                              <Copy size={16} aria-hidden />
+                            </button>
+                          </div>
+                        </label>
+                        <label>
+                          <span>{t("password")}</span>
+                          <div className="password-row">
+                            <input
+                              type={showPassword ? "text" : "password"}
+                              value={draft.password}
+                              onChange={(event) => setDraft({ ...draft, password: event.target.value })}
+                              autoComplete="new-password"
+                            />
+                            <button
+                              className="icon-button"
+                              type="button"
+                              title={showPassword ? t("hidePassword") : t("showPassword")}
+                              aria-label={showPassword ? t("hidePassword") : t("showPassword")}
+                              onClick={() => setShowPassword((value) => !value)}
+                            >
+                              {showPassword ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
+                            </button>
+                            <button className="icon-button" type="button" title={t("copy")} aria-label={t("copy")} onClick={() => copyToClipboard(draft.password)}>
+                              <Copy size={16} aria-hidden />
+                            </button>
+                            <button className="icon-button" type="button" title={t("generator")} aria-label={t("generator")} onClick={() => setGeneratorOpen(true)}>
+                              <Sparkles size={16} aria-hidden />
+                            </button>
+                          </div>
+                          <StrengthMeter level={draftStrength} showLabel />
+                        </label>
+                        <label className="span-2">
+                          <span>{t("url")}</span>
+                          <div className="password-row">
+                            <Globe2 className="lead" size={16} aria-hidden />
+                            <input
+                              value={draft.url}
+                              onChange={(event) => setDraft({ ...draft, url: event.target.value })}
+                              autoComplete="url"
+                            />
+                            <button
+                              className="icon-button"
+                              type="button"
+                              title={t("openUrl")}
+                              aria-label={t("openUrl")}
+                              onClick={openDraftUrl}
+                              disabled={!isValidUrl(draft.url)}
+                            >
+                              <ExternalLink size={16} aria-hidden />
+                            </button>
+                          </div>
+                        </label>
+                    </div>
+                    <div className="notes-field">
+                      <div className="notes-head">
+                        <label htmlFor="entry-notes">
+                          <span>{t("notes")}</span>
+                        </label>
+                        <div className="segmented sm" role="group" aria-label={t("notesView")}>
+                          <button
+                            className={notesView === "edit" ? "active" : ""}
+                            type="button"
+                            aria-pressed={notesView === "edit"}
+                            onClick={() => saveUiPreference({ notesView: "edit" })}
+                          >
+                            <Edit3 size={14} aria-hidden />
+                            {t("notesEdit")}
+                          </button>
+                          <button
+                            className={notesView === "preview" ? "active" : ""}
+                            type="button"
+                            aria-pressed={notesView === "preview"}
+                            onClick={() => saveUiPreference({ notesView: "preview" })}
+                          >
+                            <Eye size={14} aria-hidden />
+                            {t("notesPreview")}
+                          </button>
+                        </div>
+                      </div>
+                      {notesView === "edit" ? (
+                        <textarea
+                          id="entry-notes"
+                          value={draft.notes}
+                          placeholder={t("notesPlaceholder")}
+                          onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
+                        />
                       ) : (
-                        <p className="notes-empty">{t("notesPreviewEmpty")}</p>
+                        <div className="notes-preview" id="entry-notes" role="region" aria-label={t("notes")} tabIndex={0}>
+                          {draft.notes.trim() ? (
+                            <NotesBoundary key={draft.id} source={draft.notes}>
+                              <Suspense fallback={null}>
+                                <NotesMarkdown source={draft.notes} onOpenLink={openExternal} />
+                              </Suspense>
+                            </NotesBoundary>
+                          ) : (
+                            <p className="notes-empty">{t("notesPreviewEmpty")}</p>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
+                  </div>
+
+                  <footer className="ed-foot">
+                    <button className="primary-button" type="submit" disabled={busy}>
+                      <Save size={18} aria-hidden />
+                      {t("save")}
+                    </button>
+                    <button className="ghost-button" type="button" onClick={discardChanges}>
+                      {t("discard")}
+                    </button>
+                    <span className="ed-spacer" />
+                    {modifiedText && <span className="meta">{modifiedText}</span>}
+                    <button
+                      className="danger-button ed-del"
+                      type="button"
+                      onClick={() => setDeletePromptOpen(true)}
+                      disabled={!draft.id || busy}
+                      title={t("delete")}
+                      aria-label={t("delete")}
+                    >
+                      <Trash2 size={16} aria-hidden />
+                      <span className="ed-del-label">{t("delete")}</span>
+                    </button>
+                  </footer>
+                </form>
+              </section>
+
+              <button className="fab" type="button" onClick={startNewEntry} title={t("newEntry")} aria-label={t("newEntry")}>
+                <Plus size={24} strokeWidth={2.5} aria-hidden />
+              </button>
+            </>
+          )}
+          {vaultView === "settings" && (
+            <section className="settings-panel" aria-labelledby="settings-title">
+              <header className="settings-head">
+                <span className="eyebrow">{t("appName")}</span>
+                <h2 id="settings-title" tabIndex={-1} ref={settingsTitleRef}>
+                  {t("settings")}
+                </h2>
+              </header>
+              <div className="settings-tabs" role="tablist" aria-label={t("settings")}>
+                <button
+                  type="button"
+                  role="tab"
+                  id="settings-tab-general"
+                  aria-selected={settingsTab === "general"}
+                  aria-controls="settings-tabpanel"
+                  className={`settings-tab ${settingsTab === "general" ? "active" : ""}`}
+                  onClick={() => setSettingsTab("general")}
+                >
+                  <Sliders size={16} aria-hidden />
+                  <span>{t("tabGeneral")}</span>
+                </button>
+                {caps.ftpSync && (
+                  <button
+                    type="button"
+                    role="tab"
+                    id="settings-tab-sync"
+                    aria-selected={settingsTab === "sync"}
+                    aria-controls="settings-tabpanel"
+                    className={`settings-tab ${settingsTab === "sync" ? "active" : ""}`}
+                    onClick={() => setSettingsTab("sync")}
+                  >
+                    <Server size={16} aria-hidden />
+                    <span>{t("tabSync")}</span>
+                  </button>
+                )}
+                {caps.changeMasterPassword && (
+                  <button
+                    type="button"
+                    role="tab"
+                    id="settings-tab-security"
+                    aria-selected={settingsTab === "security"}
+                    aria-controls="settings-tabpanel"
+                    className={`settings-tab ${settingsTab === "security" ? "active" : ""}`}
+                    onClick={() => setSettingsTab("security")}
+                  >
+                    <ShieldCheck size={16} aria-hidden />
+                    <span>{t("tabSecurity")}</span>
+                  </button>
+                )}
+              </div>
+              <div className="settings-body">
+                <div className="settings-content" id="settings-tabpanel" role="tabpanel" aria-labelledby={`settings-tab-${settingsTab}`}>
+                {settingsTab === "general" && (
+                  <div className="stack-form">
+                    <section>
+                      <h3>{t("theme")}</h3>
+                      <Segmented
+                        value={themeMode}
+                        options={[
+                          { value: "system", label: t("system"), icon: <Monitor size={14} aria-hidden /> },
+                          { value: "light", label: t("light"), icon: <Sun size={14} aria-hidden /> },
+                          { value: "dark", label: t("dark"), icon: <Moon size={14} aria-hidden /> },
+                        ]}
+                        onChange={(theme) => setThemeMode(theme as ThemePreference)}
+                      />
+                    </section>
+                    <section>
+                      <h3>{t("language")}</h3>
+                      <Segmented
+                        value={language}
+                        options={[
+                          { value: "system", label: t("system"), icon: <Globe2 size={14} aria-hidden /> },
+                          { value: "es", label: "Español" },
+                          { value: "en", label: "English" },
+                        ]}
+                        onChange={(lang) => setLanguage(lang as Preferences["language"])}
+                      />
+                    </section>
+                    {caps.vaultIcon && (
+                      <div className="card setting">
+                        <span className="tile">
+                          <VaultGlyph icon={vaultIconKey} size={18} />
+                        </span>
+                        <div className="setting-text">
+                          <b>{t("vaultIcon")}</b>
+                          <span>{t("vaultIconHint")}</span>
+                        </div>
+                        <button className="secondary-button sm" type="button" onClick={() => setIconPickerOpen(true)} disabled={busy}>
+                          {t("chooseIcon")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {caps.ftpSync && settingsTab === "sync" && (
+                  <section className="stack-form">
+                    <SettingToggle
+                      icon={<RefreshCw size={18} aria-hidden />}
+                      title={t("syncEnabled")}
+                      hint={t("syncEnabledHint")}
+                      checked={syncForm.enabled}
+                      onChange={(enabled) => setSyncForm({ ...syncForm, enabled })}
+                    />
+                    <section>
+                      <h3>{t("syncProtocol")}</h3>
+                      <Segmented
+                        value={syncForm.protocol === "ftps" ? "ftps" : "ftp"}
+                        options={[
+                          { value: "ftps", label: t("syncProtocolFtps"), icon: <ShieldCheck size={14} aria-hidden /> },
+                          { value: "ftp", label: t("syncProtocolFtp"), icon: <LockOpen size={14} aria-hidden /> },
+                        ]}
+                        onChange={(protocol) => setSyncForm({ ...syncForm, protocol })}
+                      />
+                    </section>
+                    <div className="grid3">
+                      <label>
+                        <span>{t("syncHost")}</span>
+                        <input
+                          value={syncForm.host}
+                          onChange={(event) => setSyncForm({ ...syncForm, host: event.target.value })}
+                          autoComplete="off"
+                        />
+                      </label>
+                      <label>
+                        <span>{t("syncPort")}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={65535}
+                          value={syncForm.port}
+                          onChange={(event) => setSyncForm({ ...syncForm, port: Number(event.target.value) })}
+                        />
+                      </label>
+                    </div>
+                    <div className="grid2">
+                      <label>
+                        <span>{t("syncUser")}</span>
+                        <input
+                          value={syncForm.username}
+                          onChange={(event) => setSyncForm({ ...syncForm, username: event.target.value })}
+                          autoComplete="off"
+                        />
+                      </label>
+                      <PasswordInput
+                        label={t("syncPassword")}
+                        value={syncForm.password}
+                        onChange={(password) => setSyncForm({ ...syncForm, password })}
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <div className="grid2">
+                      <label>
+                        <span>{t("syncDir")}</span>
+                        <input
+                          value={syncForm.remoteDir}
+                          onChange={(event) => setSyncForm({ ...syncForm, remoteDir: event.target.value })}
+                          autoComplete="off"
+                        />
+                      </label>
+                      <label>
+                        <span>{t("syncFile")}</span>
+                        <input
+                          value={syncForm.remoteFile}
+                          onChange={(event) => setSyncForm({ ...syncForm, remoteFile: event.target.value })}
+                          autoComplete="off"
+                        />
+                      </label>
+                    </div>
+                    {syncForm.protocol !== "ftps" && (
+                      <p className="sync-warning">
+                        <AlertTriangle size={16} aria-hidden />
+                        <span>{t("syncPlainWarning")}</span>
+                      </p>
+                    )}
+                    <div className="sync-actions">
+                      <button className="secondary-button" type="button" onClick={testSyncConnection} disabled={busy}>
+                        <Globe2 size={18} aria-hidden />
+                        {t("syncTest")}
+                      </button>
+                      <button className="primary-button" type="button" onClick={saveSyncConfig} disabled={busy}>
+                        <Save size={18} aria-hidden />
+                        {t("save")}
+                      </button>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={manualSync}
+                        disabled={busy || syncing || !syncConfig?.enabled}
+                      >
+                        <RefreshCw size={18} aria-hidden />
+                        {t("syncNow")}
+                      </button>
+                    </div>
+                    {caps.qrLink && syncConfig?.enabled && (
+                      <div className="card setting">
+                        <span className="tile">
+                          <QrCode size={18} aria-hidden />
+                        </span>
+                        <div className="setting-text">
+                          <b>{t("qrLinkDevice")}</b>
+                          <span>{t("qrHowBody")}</span>
+                        </div>
+                        <button className="secondary-button sm" type="button" onClick={() => setQrShowModalOpen(true)} disabled={busy}>
+                          {t("qrShowCode")}
+                        </button>
+                      </div>
+                    )}
+                  </section>
+                )}
+
+                {caps.changeMasterPassword && settingsTab === "security" && (
+                  <form className="stack-form" onSubmit={changeMasterPassword}>
+                    <h3>{t("changePassword")}</h3>
+                    <PasswordInput
+                      label={t("oldPassword")}
+                      value={changePasswordForm.oldPassword}
+                      onChange={(value) => setChangePasswordForm({ ...changePasswordForm, oldPassword: value })}
+                    />
+                    <PasswordInput
+                      label={t("newPassword")}
+                      value={changePasswordForm.newPassword}
+                      onChange={(value) => setChangePasswordForm({ ...changePasswordForm, newPassword: value })}
+                    >
+                      <StrengthMeter level={passwordStrength(changePasswordForm.newPassword)} showLabel />
+                    </PasswordInput>
+                    <PasswordInput
+                      label={t("repeatNewPassword")}
+                      value={changePasswordForm.repeatPassword}
+                      onChange={(value) => setChangePasswordForm({ ...changePasswordForm, repeatPassword: value })}
+                    />
+                    <button className="primary-button" type="submit" disabled={busy}>
+                      <KeyRound size={18} aria-hidden />
+                      {t("apply")}
+                    </button>
+                  </form>
+                )}
                 </div>
               </div>
-
-              <footer className="ed-foot">
-                <button className="primary-button" type="submit" disabled={busy}>
-                  <Save size={18} aria-hidden />
-                  {t("save")}
-                </button>
-                <button className="ghost-button" type="button" onClick={discardChanges}>
-                  {t("discard")}
-                </button>
-                <span className="ed-spacer" />
-                {modifiedText && <span className="meta">{modifiedText}</span>}
-                <button
-                  className="danger-button ed-del"
-                  type="button"
-                  onClick={() => setDeletePromptOpen(true)}
-                  disabled={!draft.id || busy}
-                  title={t("delete")}
-                  aria-label={t("delete")}
-                >
-                  <Trash2 size={16} aria-hidden />
-                  <span className="ed-del-label">{t("delete")}</span>
-                </button>
-              </footer>
-            </form>
-          </section>
-
-          <button className="fab" type="button" onClick={startNewEntry} title={t("newEntry")} aria-label={t("newEntry")}>
-            <Plus size={24} strokeWidth={2.5} aria-hidden />
-          </button>
+            </section>
+          )}
 
           <nav className="tabbar" aria-label={t("navLabel")}>
-            <button className="tab active" type="button" aria-current="page" onClick={() => setEditing(false)}>
+            <button
+              className={`tab${vaultView === "entries" ? " active" : ""}`}
+              type="button"
+              aria-current={vaultView === "entries" ? "page" : undefined}
+              onClick={showEntries}
+            >
               <List size={20} aria-hidden />
               {t("entriesTitle")}
             </button>
@@ -1635,7 +1913,12 @@ function App() {
                 {t("exportData")}
               </button>
             )}
-            <button className="tab" type="button" onClick={() => setSettingsOpen(true)}>
+            <button
+              className={`tab${vaultView === "settings" ? " active" : ""}`}
+              type="button"
+              aria-current={vaultView === "settings" ? "page" : undefined}
+              onClick={openSettings}
+            >
               <Settings size={20} aria-hidden />
               {t("settings")}
             </button>
@@ -1678,233 +1961,6 @@ function App() {
               </button>
             </div>
           </form>
-        </Modal>
-      )}
-
-      {settingsOpen && (
-        <Modal title={t("settings")} eyebrow={t("appName")} onClose={closeSettings}>
-          <div className="settings-tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={settingsTab === "general"}
-              className={`settings-tab ${settingsTab === "general" ? "active" : ""}`}
-              onClick={() => setSettingsTab("general")}
-            >
-              <Sliders size={16} aria-hidden />
-              <span>{t("tabGeneral")}</span>
-            </button>
-            {caps.ftpSync && (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={settingsTab === "sync"}
-                className={`settings-tab ${settingsTab === "sync" ? "active" : ""}`}
-                onClick={() => setSettingsTab("sync")}
-              >
-                <Server size={16} aria-hidden />
-                <span>{t("tabSync")}</span>
-              </button>
-            )}
-            {caps.changeMasterPassword && (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={settingsTab === "security"}
-                className={`settings-tab ${settingsTab === "security" ? "active" : ""}`}
-                onClick={() => setSettingsTab("security")}
-              >
-                <ShieldCheck size={16} aria-hidden />
-                <span>{t("tabSecurity")}</span>
-              </button>
-            )}
-          </div>
-
-          {settingsTab === "general" && (
-            <div className="stack-form">
-              <section>
-                <h3>{t("theme")}</h3>
-                <Segmented
-                  value={themeMode}
-                  options={[
-                    { value: "system", label: t("system"), icon: <Monitor size={14} aria-hidden /> },
-                    { value: "light", label: t("light"), icon: <Sun size={14} aria-hidden /> },
-                    { value: "dark", label: t("dark"), icon: <Moon size={14} aria-hidden /> },
-                  ]}
-                  onChange={(theme) => setThemeMode(theme as ThemePreference)}
-                />
-              </section>
-              <section>
-                <h3>{t("language")}</h3>
-                <Segmented
-                  value={language}
-                  options={[
-                    { value: "system", label: t("system"), icon: <Globe2 size={14} aria-hidden /> },
-                    { value: "es", label: "Español" },
-                    { value: "en", label: "English" },
-                  ]}
-                  onChange={(lang) => setLanguage(lang as Preferences["language"])}
-                />
-              </section>
-              {caps.vaultIcon && (
-                <div className="card setting">
-                  <span className="tile">
-                    <VaultGlyph icon={vaultIconKey} size={18} />
-                  </span>
-                  <div className="setting-text">
-                    <b>{t("vaultIcon")}</b>
-                    <span>{t("vaultIconHint")}</span>
-                  </div>
-                  <button className="secondary-button sm" type="button" onClick={() => setIconPickerOpen(true)} disabled={busy}>
-                    {t("chooseIcon")}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {caps.ftpSync && settingsTab === "sync" && (
-            <section className="stack-form">
-              <SettingToggle
-                icon={<RefreshCw size={18} aria-hidden />}
-                title={t("syncEnabled")}
-                hint={t("syncEnabledHint")}
-                checked={syncForm.enabled}
-                onChange={(enabled) => setSyncForm({ ...syncForm, enabled })}
-              />
-              <section>
-                <h3>{t("syncProtocol")}</h3>
-                <Segmented
-                  value={syncForm.protocol === "ftps" ? "ftps" : "ftp"}
-                  options={[
-                    { value: "ftps", label: t("syncProtocolFtps"), icon: <ShieldCheck size={14} aria-hidden /> },
-                    { value: "ftp", label: t("syncProtocolFtp"), icon: <LockOpen size={14} aria-hidden /> },
-                  ]}
-                  onChange={(protocol) => setSyncForm({ ...syncForm, protocol })}
-                />
-              </section>
-              <div className="grid3">
-                <label>
-                  <span>{t("syncHost")}</span>
-                  <input
-                    value={syncForm.host}
-                    onChange={(event) => setSyncForm({ ...syncForm, host: event.target.value })}
-                    autoComplete="off"
-                  />
-                </label>
-                <label>
-                  <span>{t("syncPort")}</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={65535}
-                    value={syncForm.port}
-                    onChange={(event) => setSyncForm({ ...syncForm, port: Number(event.target.value) })}
-                  />
-                </label>
-              </div>
-              <div className="grid2">
-                <label>
-                  <span>{t("syncUser")}</span>
-                  <input
-                    value={syncForm.username}
-                    onChange={(event) => setSyncForm({ ...syncForm, username: event.target.value })}
-                    autoComplete="off"
-                  />
-                </label>
-                <PasswordInput
-                  label={t("syncPassword")}
-                  value={syncForm.password}
-                  onChange={(password) => setSyncForm({ ...syncForm, password })}
-                  autoComplete="new-password"
-                />
-              </div>
-              <div className="grid2">
-                <label>
-                  <span>{t("syncDir")}</span>
-                  <input
-                    value={syncForm.remoteDir}
-                    onChange={(event) => setSyncForm({ ...syncForm, remoteDir: event.target.value })}
-                    autoComplete="off"
-                  />
-                </label>
-                <label>
-                  <span>{t("syncFile")}</span>
-                  <input
-                    value={syncForm.remoteFile}
-                    onChange={(event) => setSyncForm({ ...syncForm, remoteFile: event.target.value })}
-                    autoComplete="off"
-                  />
-                </label>
-              </div>
-              {syncForm.protocol !== "ftps" && (
-                <p className="sync-warning">
-                  <AlertTriangle size={16} aria-hidden />
-                  <span>{t("syncPlainWarning")}</span>
-                </p>
-              )}
-              <div className="sync-actions">
-                <button className="secondary-button" type="button" onClick={testSyncConnection} disabled={busy}>
-                  <Globe2 size={18} aria-hidden />
-                  {t("syncTest")}
-                </button>
-                <button className="primary-button" type="button" onClick={saveSyncConfig} disabled={busy}>
-                  <Save size={18} aria-hidden />
-                  {t("save")}
-                </button>
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={manualSync}
-                  disabled={busy || syncing || !syncConfig?.enabled}
-                >
-                  <RefreshCw size={18} aria-hidden />
-                  {t("syncNow")}
-                </button>
-              </div>
-              {syncConfig?.enabled && (
-                <div className="card setting">
-                  <span className="tile">
-                    <QrCode size={18} aria-hidden />
-                  </span>
-                  <div className="setting-text">
-                    <b>{t("qrLinkDevice")}</b>
-                    <span>{t("qrHowBody")}</span>
-                  </div>
-                  <button className="secondary-button sm" type="button" onClick={() => setQrShowModalOpen(true)} disabled={busy}>
-                    {t("qrShowCode")}
-                  </button>
-                </div>
-              )}
-            </section>
-          )}
-
-          {caps.changeMasterPassword && settingsTab === "security" && (
-            <form className="stack-form" onSubmit={changeMasterPassword}>
-              <h3>{t("changePassword")}</h3>
-              <PasswordInput
-                label={t("oldPassword")}
-                value={changePasswordForm.oldPassword}
-                onChange={(value) => setChangePasswordForm({ ...changePasswordForm, oldPassword: value })}
-              />
-              <PasswordInput
-                label={t("newPassword")}
-                value={changePasswordForm.newPassword}
-                onChange={(value) => setChangePasswordForm({ ...changePasswordForm, newPassword: value })}
-              >
-                <StrengthMeter level={passwordStrength(changePasswordForm.newPassword)} showLabel />
-              </PasswordInput>
-              <PasswordInput
-                label={t("repeatNewPassword")}
-                value={changePasswordForm.repeatPassword}
-                onChange={(value) => setChangePasswordForm({ ...changePasswordForm, repeatPassword: value })}
-              />
-              <button className="primary-button" type="submit" disabled={busy}>
-                <KeyRound size={18} aria-hidden />
-                {t("apply")}
-              </button>
-            </form>
-          )}
         </Modal>
       )}
 

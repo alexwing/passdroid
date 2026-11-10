@@ -1376,27 +1376,44 @@ input.switch:checked::after {
 }
 
 .ed-body {
-  display: grid;
+  display: flex;
   min-height: 0;
   flex: 1;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px 28px;
+  overflow: auto;
+}
+
+.ed-fields {
+  display: grid;
+  flex: none;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
   gap: 16px 18px;
-  padding: 22px 28px;
-  overflow: auto;
 }
 
 .span-2 {
   grid-column: 1 / -1;
 }
 
+/* Grows into the free height down to the action bar; never below its minimum, so .ed-body scrolls instead. */
 .notes-field {
-  display: grid;
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
   gap: 6px;
 }
 
+.notes-field textarea,
+.notes-preview {
+  min-height: 180px;
+  /* Zero basis (not the 0% shorthand) so content never decides the box size. */
+  flex: 1 1 0px;
+}
+
 .notes-field textarea {
-  min-height: 140px;
+  resize: none;
 }
 
 .notes-head {
@@ -1408,8 +1425,6 @@ input.switch:checked::after {
 
 /* Rendered Markdown view of the notes: scrolls inside the field when long. */
 .notes-preview {
-  min-height: 140px;
-  max-height: 360px;
   padding: 10px 14px;
   overflow: auto;
   border: 1px solid var(--border);
@@ -1984,6 +1999,10 @@ button.md-img:hover {
 .modal-body {
   --modal-pad: 20px;
   display: grid;
+  /* One column that never grows past the dialog: an "auto" column widens to
+     the widest child's min-content (e.g. the 280px QR on a 375px phone) and
+     pushes the content out of the dialog on the right. */
+  grid-template-columns: minmax(0, 1fr);
   /* Rows keep their content height: the body scrolls instead of squeezing them. */
   grid-auto-rows: max-content;
   align-content: start;
@@ -2000,18 +2019,66 @@ button.md-img:hover {
   gap: 10px;
 }
 
+/* Settings view: fills the list and editor columns, only the body scrolls. */
+.settings-panel {
+  /* Header, tabs and content share one centred column on wide screens. */
+  --settings-w: 880px;
+  --settings-pad: max(28px, calc((100% - var(--settings-w)) / 2));
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  grid-column: 2 / -1;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.settings-head {
+  display: grid;
+  flex: none;
+  padding: 20px var(--settings-pad) 16px;
+}
+
+.settings-head h2 {
+  margin-top: 2px;
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.settings-head h2:focus {
+  outline: none;
+}
+
+.settings-body {
+  min-height: 0;
+  flex: 1;
+  padding: 22px var(--settings-pad) 28px;
+  overflow: auto;
+}
+
+.settings-content {
+  display: grid;
+  width: 100%;
+  max-width: var(--settings-w);
+  /* Rows keep their content height: the body scrolls instead of squeezing them. */
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 14px;
+}
+
 /* Tabs: underline style, edge to edge under the header. */
 .settings-tabs {
-  position: sticky;
-  z-index: 2;
-  top: 0;
   display: flex;
   flex: none;
   min-height: 41px;
   gap: 4px;
-  margin: -2px calc(var(--modal-pad) * -1) 0;
-  padding: 0 var(--modal-pad);
+  /* Tabs line up with the content column; the bar itself stays edge to edge. */
+  padding: 0 calc(var(--settings-pad) - 12px);
+  /* Horizontal scroll only on very narrow screens; overflow-y must be hidden or the
+     active underline adds a 1px vertical scrollbar. */
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   background: var(--s1);
 }
@@ -2042,7 +2109,7 @@ button.md-img:hover {
   content: "";
   position: absolute;
   right: 8px;
-  bottom: -1px;
+  bottom: 0;
   left: 8px;
   height: 2px;
   border-radius: 2px;
@@ -2478,7 +2545,7 @@ button.md-img:hover {
 /* ——— Responsive ——— */
 
 @media (max-width: 1000px) {
-  .ed-body {
+  .ed-fields {
     grid-template-columns: 1fr;
   }
 
@@ -2616,6 +2683,28 @@ button.md-img:hover {
   }
 
   .ed-body {
+    padding: 18px 16px;
+  }
+
+  .settings-panel {
+    min-height: 0;
+    flex: 1;
+    grid-column: auto;
+  }
+
+  .settings-head {
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) 14px 10px;
+  }
+
+  .settings-head h2 {
+    font-size: 20px;
+  }
+
+  .settings-tabs {
+    padding: 0 14px;
+  }
+
+  .settings-body {
     padding: 18px 16px;
   }
 
@@ -2926,15 +3015,18 @@ button.md-img:hover {
 }
 
 .qr-image {
-  width: min(280px, 100%);
+  display: block;
+  width: 280px;
+  max-width: 100%;
+  min-width: 0;
   height: auto;
   aspect-ratio: 1;
 }
 
 .qr-placeholder {
   display: grid;
-  width: 280px;
-  height: 280px;
+  width: min(280px, 100%);
+  aspect-ratio: 1;
   place-items: center;
   color: #66758f;
 }
