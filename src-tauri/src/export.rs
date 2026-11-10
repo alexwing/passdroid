@@ -2,10 +2,7 @@ use serde::{Deserialize, Serialize};
 use tauri::plugin::{Builder, TauriPlugin};
 use tauri::Wry;
 
-use crate::{
-    crypto::VAULT_MAGIC,
-    models::VaultEnvelope,
-};
+use passdroid_core::{VaultEnvelope, VAULT_MAGIC};
 
 #[cfg(target_os = "android")]
 struct AndroidExport(tauri::plugin::PluginHandle<Wry>);
@@ -145,10 +142,7 @@ pub async fn export_save_android(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        crypto::{default_cipher_info, default_kdf_params, now_iso},
-        models::VaultHeader,
-    };
+    use passdroid_core::{default_cipher_info, default_kdf_params, now_iso, VaultHeader};
 
     fn envelope(magic: &str, payload: &str) -> String {
         let now = now_iso();

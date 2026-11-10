@@ -1,0 +1,140 @@
+name: CI
+
+# Safety nets (Passdroid Web phase 0b): core + WASM conformance against the
+# golden vectors, the Tauri crate's tests, and the frontend (types, unit tests,
+# build, Playwright smoke). release.yml stays the only workflow that builds and
+# publishes installers.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  WASM_BINDGEN_VERSION: "0.2.125"
+  NODE_VERSION: "24"
+
+jobs:
+  core:
+    name: Core (native + wasm32)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/passdroid-core -> target
+            crates/passdroid-wasm -> target
+      - name: Clippy (core)
+        working-directory: crates/passdroid-core
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Tests (core, incl. golden vectors)
+        working-directory: crates/passdroid-core
+        run: cargo test
+      - name: Core compiles to wasm32 on its own
+        working-directory: crates/passdroid-core
+        run: cargo check --target wasm32-unknown-unknown
+      - name: Install wasm-bindgen-cli ${{ env.WASM_BINDGEN_VERSION }}
+        run: |
+          if ! wasm-bindgen --version 2>/dev/null | grep -q "$WASM_BINDGEN_VERSION"; then
+            cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked --force
+          fi
+          wasm-bindgen --version
+      - name: Build WASM module
+        working-directory: crates/passdroid-wasm
+        run: |
+          cargo build --release --target wasm32-unknown-unknown
+          wasm-bindgen --target nodejs --out-dir pkg-node target/wasm32-unknown-unknown/release/passdroid_wasm.wasm
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: WASM opens the golden vectors (Node)
+        run: node crates/passdroid-wasm/tests/node-golden.mjs crates/passdroid-wasm/pkg-node
+
+  tauri:
+    name: Tauri crate tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      # generate_context! only needs frontendDist to exist; the real bundle is
+      # built by the frontend job.
+      - name: Placeholder frontend dist
+        run: mkdir -p dist
+      - name: Clippy (src-tauri)
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Tests (src-tauri)
+        working-directory: src-tauri
+        run: cargo test
+
+  frontend:
+    name: Frontend (tsc, vitest, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Type check (app + e2e)
+        run: |
+          npx tsc --noEmit
+          npx tsc -p e2e/tsconfig.json
+      - name: Unit tests (vitest + FakeApi)
+        run: npm test
+      - name: Production build
+        run: npm run build
+
+  e2e:
+    name: E2E smoke (Playwright + FakeApi)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Smoke test
+        run: npm run test:e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

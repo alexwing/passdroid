@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Passdroid Phase 0 - Argon2id WASM spike</title>
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 1rem; max-width: 70rem; }
+    table { border-collapse: collapse; margin: .5rem 0 1.5rem; width: 100%; }
+    th, td { border: 1px solid #bbb; padding: .25rem .5rem; text-align: left; font-variant-numeric: tabular-nums; }
+    th { background: #eee; }
+    tr.pass td { background: #e6f6e6; }
+    tr.fail td { background: #fbe3e3; }
+    tr.skip td { color: #777; }
+    pre { background: #f6f6f6; padding: .5rem; overflow: auto; }
+    #status { font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Argon2id in the browser (Phase 0 spike)</h1>
+  <p id="status">Starting...</p>
+  <h2>Environment</h2>
+  <pre id="env"></pre>
+  <h2>Argon2id (32-byte output, fixed salt; median / min / max of 5 runs after 1 warm-up, in a Web Worker)</h2>
+  <table id="kdf">
+    <tr><th>Config</th><th>Engine</th><th>Median</th><th>Min</th><th>Max</th><th>Warm-up</th><th>WASM memory</th></tr>
+  </table>
+  <h2>Golden fixtures (open, reseal, reopen, wrong password; each step includes one Argon2id)</h2>
+  <table id="golden">
+    <tr><th>Fixture</th><th>Engine</th><th>Result</th><th>Open</th><th>Reseal</th><th>Reopen</th><th>Wrong password</th></tr>
+  </table>
+  <h2>Raw JSON (window.__benchResults)</h2>
+  <pre id="raw"></pre>
+  <script type="module" src="bench.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "header": {
+    "magic": "passdroid-vault-v1",
+    "version": 1,
+    "vaultId": "12bea4dc-ca5d-46a0-a430-fe7b695a2dae",
+    "kdf": {
+      "algorithm": "Argon2id",
+      "memoryKib": 32768,
+      "iterations": 3,
+      "parallelism": 1,
+      "salt": "x/sETaqTlXRzX1u/Kc9CCQ==",
+      "outputLen": 32
+    },
+    "cipher": {
+      "algorithm": "XChaCha20-Poly1305"
+    },
+    "nonce": "9X0CQsr76MDQZ+NXefwZ3qWjOvSdo1uZ",
+    "createdAt": "2026-11-09T18:06:22.460Z",
+    "updatedAt": "2026-11-09T18:09:27.177Z"
+  },
+  "payload": "2L10aawZf5RgxlnDRCZMrAF2smVeWOJoxmlZDiBwWSf0E+et8KRO1v0nNOv94pqH7JdPvc63n1s3qpxU6RgFOxTZLcDdfg9ukwn5+1eUUZldwVFv54rB9fY+8FEbws0pdmm5bsogF3Fa0WY4QoQRVidmRaxp9jnAAFJ3IenQvRsWBYzTzubDAe7EfnFoXlJv25OY7vNl3rK8l+E0nWhmo0a7A0mLVyf/umhJHojcTolq31AkEm5hD153nDlyrSB+2V0ijoZ/wpGD7qa/M70BdYeSbYvOMwbJstRU7XRSDlJhNWJPDwEcCmgqSw9VuoAE+RKTOuTzkO0pWNY2u3rYdOG5dWi47jh9pv4nUUdFxy5wBJ6G3xJqLQJpqHnUWSRiVMqyOiWtY63+ZbU5rogKjEHiI6UHeJaPWQs/A200YcFzLxNhyANyWVLO+Y979H1gJ+FMEjzRI9HFr/hvcYdfwuGqbGeX4pIL96bu4ZS5IVnarQ/t+xW0+i2i2bI8/EPAq5EColy+oWJgYuJibkIQvr4EJ+nPIjl2FzmJu5kiOhQJ+PHxgnwh3PwrCK4eVeOp2MUu59f8GcxgQI0inqW13AJNFM0ZUjjLva6qbWpXJF9d7qvMNPA+54vjB//x6mw1gObNyOzWuSdTY0hn9LQXfimZO8C7hJC3lFEvVFkiFQTNbG9Rw3uAMaeg8bqFzD3TkZmg0swg4xAFi1wDDu+RCw/SAu+fUPw+hKEcfOswaS0EcVHWXKYnMEBFaQ9TsF9Mr8RwWQUp5zCIQ9rkXe9K5y8T4OuQTq54NqNIy71pSCr4NeHkWjQavBrbsvSwEkrJ8pG9LUlUFNUhViilzOr4LJ4zAzlUj9WY0SO1d2u5uj/ShdSQM8DMBQgjdajGIMRTpkYHguKCh0jhThhQJm8T2FIG+/AFvWMKWtVsihTX/8LvMeSFn5ZhjrhjU27IDUG/F98NDFUibiPGatAu1I93v3hG3MSr+9gNnZ4ArVBeFZzDVbmSBj3OF4rWFtaAAI7alUBTPF/ci95SZUiyIlRBsuBezAzy0YR1mN5TzfY4c/dj1Kw5HEorz/FWhuVgWs6jT0iI4CQPBO8u0BdCWqf9XYPvQxdFKITxIV6PXzxuyN8svhYf9plw"
+}

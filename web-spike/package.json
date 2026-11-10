@@ -1,0 +1,16 @@
+{
+  "name": "passdroid-web-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Phase 0 spike: passdroid-core in WASM, Argon2id benchmark in the browser. hash-wasm is vendored into vendor/hash-wasm from node_modules.",
+  "scripts": {
+    "build": "bash build.sh",
+    "serve": "node serve.mjs",
+    "check": "node node-check.mjs pkg && node node-check.mjs pkg-simd"
+  },
+  "license": "GPL-3.0-or-later",
+  "dependencies": {
+    "hash-wasm": "4.13.0"
+  }
+}

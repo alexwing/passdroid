@@ -1,0 +1,4 @@
+# Golden vault vectors must stay byte-exact (no CRLF conversion).
+fixtures/golden/* -text
+# Shell scripts run under bash/WSL: always LF.
+*.sh text eol=lf

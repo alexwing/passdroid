@@ -1,4 +1,5 @@
-mod crypto;
+#[cfg(test)]
+mod golden_tests;
 mod export;
 mod legacy;
 mod models;

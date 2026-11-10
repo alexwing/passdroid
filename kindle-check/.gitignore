@@ -1,0 +1,4 @@
+# Build outputs (regenerate with native/run.sh and monocypher-wasm/build.sh)
+native/fn_decrypt_x64
+native/out/
+monocypher-wasm/monocypher.wasm

@@ -1,23 +1,20 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Mutex,
-};
+use std::{collections::HashMap, sync::Mutex};
 
-use rand_core::{OsRng, RngCore};
+use passdroid_core::{
+    change_password as core_change_password, merge_entries, new_vault, now_iso, open_envelope,
+    open_payload, reseal_envelope as core_reseal_envelope, seal_envelope as core_seal_envelope,
+    validate_password, vault_status, visible_entries, GeneratePasswordOptions, NewVault, VaultData,
+    VaultEnvelope, VaultHeader,
+};
 use tauri::State;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::{
-        default_cipher_info, default_kdf_params, derive_key, now_iso, open_payload, seal_payload,
-        VAULT_MAGIC,
-    },
     legacy,
     models::{
-        EntriesSnapshot, GeneratePasswordOptions, ImportPreview, ImportPreviewEntry, SyncCheck,
-        SyncConfig, SyncResult, VaultData, VaultEntry, VaultEnvelope, VaultHeader, VaultSnapshot,
-        VaultStatus,
+        EntriesSnapshot, ImportPreview, ImportPreviewEntry, SyncCheck, SyncConfig, SyncResult,
+        VaultEntry, VaultSnapshot, VaultStatus,
     },
     sync,
 };
@@ -46,26 +43,7 @@ struct VaultSession {
 // ---------------------------------------------------------------------------
 impl VaultManager {
     pub fn create(&mut self, master_password: String) -> Result<VaultSnapshot, String> {
-        validate_password(&master_password)?;
-        let now = now_iso();
-        let kdf = default_kdf_params();
-        let key = derive_key(&master_password, &kdf)?;
-        let header = VaultHeader {
-            magic: VAULT_MAGIC.to_string(),
-            version: 1,
-            vault_id: Uuid::new_v4().to_string(),
-            kdf,
-            cipher: default_cipher_info(),
-            nonce: String::new(),
-            created_at: now.clone(),
-            updated_at: now,
-        };
-        let data = VaultData {
-            revision: 0,
-            device_id: Uuid::new_v4().to_string(),
-            entries: Vec::new(),
-            settings: serde_json::json!({}),
-        };
+        let NewVault { header, key, data } = new_vault(&master_password)?;
 
         self.session = Some(VaultSession {
             header,
@@ -84,19 +62,14 @@ impl VaultManager {
     }
 
     pub fn unlock(&mut self, contents: String, master_password: String) -> Result<VaultStatus, String> {
-        let envelope: VaultEnvelope =
-            serde_json::from_str(&contents).map_err(|_| "vault_file_invalid".to_string())?;
-        validate_header(&envelope.header)?;
-        let key = derive_key(&master_password, &envelope.header.kdf)?;
-        let data: VaultData = open_payload(&envelope.payload, &envelope.header, &key[..])
-            .map_err(|_| "master_password_incorrect".to_string())?;
+        let opened = open_envelope(&contents, &master_password)?;
 
         self.session = Some(VaultSession {
-            header: envelope.header,
-            key,
-            base_entries: data.entries.clone(),
-            loaded_revision: data.revision,
-            data,
+            base_entries: opened.data.entries.clone(),
+            loaded_revision: opened.data.revision,
+            header: opened.header,
+            key: opened.key,
+            data: opened.data,
         });
 
         Ok(self.session.as_ref().unwrap().status())
@@ -165,14 +138,8 @@ impl VaultManager {
     ) -> Result<VaultSnapshot, String> {
         validate_password(&new_password)?;
         let session = self.session.as_mut().ok_or_else(|| "vault_locked".to_string())?;
-        let old_key = derive_key(&old_password, &session.header.kdf)?;
-        if old_key[..] != session.key[..] {
-            return Err("master_password_incorrect".to_string());
-        }
-
-        let new_kdf = default_kdf_params();
-        session.key = derive_key(&new_password, &new_kdf)?;
-        session.header.kdf = new_kdf;
+        session.key =
+            core_change_password(&mut session.header, &session.key[..], &old_password, &new_password)?;
 
         let contents = seal_envelope(session)?;
         Ok(VaultSnapshot {
@@ -383,156 +350,19 @@ fn read_sync_config(data: &VaultData) -> Option<SyncConfig> {
 /// sync); advancing it on every local save would make the next 3-way merge
 /// treat brand-new local entries as "already known", dropping them.
 fn seal_envelope(session: &mut VaultSession) -> Result<String, String> {
-    session.data.revision = session.data.revision.saturating_add(1);
-    session.header.updated_at = now_iso();
-    let payload = seal_payload(&session.data, &mut session.header, &session.key[..])?;
+    let contents = core_seal_envelope(&mut session.header, &mut session.data, &session.key[..])?;
     session.loaded_revision = session.data.revision;
-    let envelope = VaultEnvelope {
-        header: session.header.clone(),
-        payload,
-    };
-    serde_json::to_string_pretty(&envelope).map_err(|e| e.to_string())
+    Ok(contents)
 }
 
 /// Seal the current data WITHOUT advancing the revision (used for export copies).
 fn current_envelope(session: &mut VaultSession) -> Result<String, String> {
-    let payload = seal_payload(&session.data, &mut session.header, &session.key[..])?;
-    let envelope = VaultEnvelope {
-        header: session.header.clone(),
-        payload,
-    };
-    serde_json::to_string_pretty(&envelope).map_err(|e| e.to_string())
-}
-
-fn merge_entries(base: &[VaultEntry], disk: &[VaultEntry], local: &[VaultEntry]) -> Vec<VaultEntry> {
-    let base_by_id = base.iter().map(|entry| (entry.id.clone(), entry)).collect::<HashMap<_, _>>();
-    let mut merged = disk.iter().map(|entry| (entry.id.clone(), entry.clone())).collect::<HashMap<_, _>>();
-    let mut conflict_ids = HashSet::new();
-
-    for local_entry in local {
-        let base_entry = base_by_id.get(&local_entry.id).copied();
-        let disk_entry = merged.get(&local_entry.id).cloned();
-
-        match disk_entry {
-            Some(disk_entry) => {
-                let local_changed = changed_since_base(base_entry, local_entry);
-                let disk_changed = changed_since_base(base_entry, &disk_entry);
-                if local_changed && disk_changed && content_differs(local_entry, &disk_entry) {
-                    let mut conflict = local_entry.clone();
-                    conflict.id = Uuid::new_v4().to_string();
-                    conflict.conflict = true;
-                    conflict.title = format!("{} (conflict)", conflict.title);
-                    conflict_ids.insert(conflict.id.clone());
-                    merged.insert(conflict.id.clone(), conflict);
-                } else if local_changed || local_entry.updated_at > disk_entry.updated_at {
-                    merged.insert(local_entry.id.clone(), local_entry.clone());
-                }
-            }
-            None => {
-                if changed_since_base(base_entry, local_entry) {
-                    merged.insert(local_entry.id.clone(), local_entry.clone());
-                }
-            }
-        }
-    }
-
-    let mut values = merged.into_values().collect::<Vec<_>>();
-    values.sort_by(|a, b| {
-        let a_key = (!conflict_ids.contains(&a.id), a.title.to_lowercase(), a.username.to_lowercase());
-        let b_key = (!conflict_ids.contains(&b.id), b.title.to_lowercase(), b.username.to_lowercase());
-        a_key.cmp(&b_key)
-    });
-    values
-}
-
-fn changed_since_base(base: Option<&VaultEntry>, entry: &VaultEntry) -> bool {
-    match base {
-        Some(base) => base.updated_at != entry.updated_at || base.deleted_at != entry.deleted_at,
-        None => true,
-    }
-}
-
-fn content_differs(a: &VaultEntry, b: &VaultEntry) -> bool {
-    a.title != b.title
-        || a.username != b.username
-        || a.password != b.password
-        || a.url != b.url
-        || a.notes != b.notes
-        || a.deleted_at != b.deleted_at
-}
-
-fn visible_entries(entries: &[VaultEntry]) -> Vec<VaultEntry> {
-    let mut visible = entries
-        .iter()
-        .filter(|entry| entry.deleted_at.is_none())
-        .cloned()
-        .collect::<Vec<_>>();
-    visible.sort_by(|a, b| {
-        (a.title.to_lowercase(), a.username.to_lowercase())
-            .cmp(&(b.title.to_lowercase(), b.username.to_lowercase()))
-    });
-    visible
-}
-
-fn validate_header(header: &VaultHeader) -> Result<(), String> {
-    if header.magic != VAULT_MAGIC || header.version != 1 {
-        return Err("unsupported_vault_format".to_string());
-    }
-    if header.cipher.algorithm != "XChaCha20-Poly1305" {
-        return Err("unsupported_cipher".to_string());
-    }
-    Ok(())
-}
-
-fn validate_password(password: &str) -> Result<(), String> {
-    if password.chars().count() < 8 {
-        return Err("master_password_too_short".to_string());
-    }
-    Ok(())
-}
-
-/// Uniformly pick one byte from `group` using rejection sampling to avoid the
-/// modulo bias of `u32 % len`.
-fn random_pick(group: &[u8]) -> u8 {
-    group[random_index(group.len())]
-}
-
-/// Uniform index in `0..len` via rejection sampling on a fresh u32.
-fn random_index(len: usize) -> usize {
-    debug_assert!(len > 0);
-    let len = len as u32;
-    let limit = u32::MAX - (u32::MAX % len);
-    loop {
-        let mut bytes = [0u8; 4];
-        OsRng.fill_bytes(&mut bytes);
-        let value = u32::from_le_bytes(bytes);
-        if value < limit {
-            return (value % len) as usize;
-        }
-    }
-}
-
-fn shuffle(chars: &mut [u8]) {
-    for idx in (1..chars.len()).rev() {
-        let swap_idx = random_index(idx + 1);
-        chars.swap(idx, swap_idx);
-    }
+    core_reseal_envelope(&mut session.header, &session.data, &session.key[..])
 }
 
 impl VaultSession {
     fn status(&self) -> VaultStatus {
-        VaultStatus {
-            vault_id: self.header.vault_id.clone(),
-            revision: self.data.revision,
-            entry_count: self.data.entries.iter().filter(|entry| entry.deleted_at.is_none()).count(),
-            icon: self
-                .data
-                .settings
-                .get("icon")
-                .and_then(|value| value.as_str())
-                .unwrap_or("")
-                .to_string(),
-        }
+        vault_status(&self.header, &self.data)
     }
 }
 
@@ -681,117 +511,12 @@ pub fn is_android() -> bool {
 
 #[tauri::command]
 pub fn generate_password(options: GeneratePasswordOptions) -> Result<String, String> {
-    let length = options.length.clamp(8, 256);
-    let mut groups: Vec<&[u8]> = Vec::new();
-    if options.uppercase {
-        groups.push(b"ABCDEFGHJKLMNPQRSTUVWXYZ");
-    }
-    if options.lowercase {
-        groups.push(b"abcdefghijkmnopqrstuvwxyz");
-    }
-    if options.numbers {
-        groups.push(b"23456789");
-    }
-    if options.symbols {
-        groups.push(b"!@#$%^&*()-_=+[]{};:,.?");
-    }
-    if groups.is_empty() {
-        return Err("password_generator_empty_charset".to_string());
-    }
-
-    let mut chars = Vec::new();
-    for group in &groups {
-        chars.push(random_pick(group));
-    }
-
-    let all = groups.concat();
-    while chars.len() < length {
-        chars.push(random_pick(&all));
-    }
-    shuffle(&mut chars);
-    String::from_utf8(chars).map_err(|_| "password_generator_failed".to_string())
+    passdroid_core::generate_password(options)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn entry(id: &str, title: &str, updated_at: &str) -> VaultEntry {
-        VaultEntry {
-            id: id.to_string(),
-            title: title.to_string(),
-            username: String::new(),
-            password: String::new(),
-            url: String::new(),
-            notes: String::new(),
-            created_at: "2026-01-01T00:00:00.000Z".to_string(),
-            updated_at: updated_at.to_string(),
-            deleted_at: None,
-            conflict: false,
-        }
-    }
-
-    #[test]
-    fn merge_creates_conflict_for_parallel_edits() {
-        let base = vec![entry("1", "Mail", "1")];
-        let disk = vec![entry("1", "Mail remote", "2")];
-        let local = vec![entry("1", "Mail local", "3")];
-
-        let merged = merge_entries(&base, &disk, &local);
-        assert_eq!(merged.len(), 2);
-        assert!(merged.iter().any(|item| item.conflict));
-    }
-
-    #[test]
-    fn merge_keeps_parallel_additions_without_loss() {
-        let base = vec![entry("shared", "Shared", "1")];
-        let disk = vec![entry("shared", "Shared", "1"), entry("remote", "Remote add", "2")];
-        let local = vec![entry("shared", "Shared", "1"), entry("local", "Local add", "2")];
-
-        let merged = merge_entries(&base, &disk, &local);
-        let ids = merged.iter().map(|e| e.id.as_str()).collect::<HashSet<_>>();
-        assert!(ids.contains("shared"));
-        assert!(ids.contains("remote"));
-        assert!(ids.contains("local"));
-        assert!(merged.iter().all(|e| !e.conflict));
-    }
-
-    #[test]
-    fn merge_identical_edit_does_not_conflict() {
-        let base = vec![entry("1", "Mail", "1")];
-        let disk = vec![entry("1", "Mail edited", "2")];
-        let local = vec![entry("1", "Mail edited", "2")];
-
-        let merged = merge_entries(&base, &disk, &local);
-        assert_eq!(merged.len(), 1);
-        assert!(!merged[0].conflict);
-        assert_eq!(merged[0].title, "Mail edited");
-    }
-
-    #[test]
-    fn generated_password_respects_length() {
-        let password = generate_password(GeneratePasswordOptions {
-            length: 24,
-            uppercase: true,
-            lowercase: true,
-            numbers: true,
-            symbols: true,
-        })
-        .unwrap();
-        assert_eq!(password.len(), 24);
-    }
-
-    #[test]
-    fn generated_password_rejects_empty_charset() {
-        let result = generate_password(GeneratePasswordOptions {
-            length: 16,
-            uppercase: false,
-            lowercase: false,
-            numbers: false,
-            symbols: false,
-        });
-        assert_eq!(result, Err("password_generator_empty_charset".to_string()));
-    }
 
     #[test]
     fn full_command_lifecycle_round_trips() {

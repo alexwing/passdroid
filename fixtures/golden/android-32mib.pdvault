@@ -1,0 +1,22 @@
+{
+  "header": {
+    "magic": "passdroid-vault-v1",
+    "version": 1,
+    "vaultId": "6201f6b1-8f91-4eda-95b5-0eefedd4d519",
+    "kdf": {
+      "algorithm": "Argon2id",
+      "memoryKib": 32768,
+      "iterations": 3,
+      "parallelism": 1,
+      "salt": "WuzvzoPwcn0RcUP8M3Z1pw==",
+      "outputLen": 32
+    },
+    "cipher": {
+      "algorithm": "XChaCha20-Poly1305"
+    },
+    "nonce": "n+V3VM9X5G56Mf7hCySqMEwPOZfIpKoL",
+    "createdAt": "2026-11-09T15:08:54.355Z",
+    "updatedAt": "2026-11-09T15:08:58.341Z"
+  },
+  "payload": "qhLKvGRjBTu+RKnEhyVqIWxiTWMoQXo/U9Atrv6kYR4xLjoFpqTk/5EMwJArS5e9ixYbVkJx2wWqLxERHaoXs0h36HmaIrT/rmArh9qPQMpe9BPkgAUJIbgKCSfictqfR/bQYBFj2M32TpVtXRkR0HTtEklVZ+lamZhx5maxQ+0dk3LgKlhUT9cxsrDmZgAhX1knZjSNYDAfZvtbHAy1yOSjfwsji7G9lH3JqVrCDa/egubxzJRNfseE04b1xtrj/S1I2vsp5LNKKLFXmHfJolyITfdADCltvhCnY75V1fxa62964P8QsLNshk81uwXAZ8R8JULeAXB1EcAyTCpJhSOWs9dA0S4rt9yE99XhCUNxhEfZcQ0ERRH8GbDotMhosMM+Ltv8gQIOsXjjy1aLCdtCcLhEyThkA8G0RtLdmCu8QYuQ2raLgp+D+2cGpc+A6K1EYKXWnU7vCc/TzmyFTFFv8RQnnrQ81MMiDoOM6bSDhOgN2agyTGXph6fGjc0maPDi+oCFFzRO+jKzoOglcY5Zxh7/d7ScyYkrwAEvzND/ub45vOnboKtjDL2AIjuSPjH+Epl3qnmbhkQeqcqg52R4o4WR6+hYqP1cHGi1sGyWv1mqPafWqkaBGgX2sv8QHOHWjbo0629lWABKTY5aNqMBInVLnBEIjpiPE85YIBhJ4qcN1vS8+qI74fjyH5GHBlcZ3UO+I6tqch77TG8hCl6a7NRG52I+CelRMZi0XJemCpanPq25ESyjmDfc7l3UQiZGBc4NOjf/EoRpj8EwcPpqc1eQxFnOYUPVZQOgoIpSdE8Ve9ei9dKyvGHQdnFdN4NMeWWvPEoLkn91GCKe2kCuGTrskvOGL5Yws8YYH+TGu7vTgkH9ojdbFyHkfH808TtJY/996FyTw/UhUMaz2353TVRg1lRpzVNyrwt+1KWxkNmR8s6wuwbFACsW44dxqw6HLiAtXCosmI5tRn/Qbc9N6TY8sj08YXf2wceBLYMKBfKhMMoi5r+XGuRpd9qj7AeeuebW5L/BeFI86Bc7JvU5SGwlgJ62sidsTmfyM6Lzggu8S4cur4NqhFspvkPdpf4aF7r8IJa47NeeMOwYmR/5MIhL02lSCdCkaaFjywpmhnj53a3eWcxNM53vAbLnICbKzIv+V4M+ccKWApeHP+Hqc9TwLV3r4yv2yhh+YGI+k11tcdhvXKFz75GthbW+SLt4sO8y5gQx40Tl9Yx6KvftKuCzimC6Af85ocHDTYyjKMm7EwqQpJclIWKowI8QxV3eBS5Jfo0g9iZSD410CBV0GYvWbr5UFnUT4FTkX1RVo9C2X6D0CxuF/d6drZieYFNhvMGjKeDZXnJc+W3FM2YlKt7wRe5+LQNOocaGiJJ+pNegx8nwSQCZDmSSre9C7yRuYUuruyPFVwuHGgdFLiPT6nIWtchJSwhqy04goiQa86DqOM66tbL9qgHIWP/UR/5Ak+zybVtYkiuBiWtYLvl6YVs83VGSZknsWyUA1c9tXcrLDfdKnubqRRYi2tDJ/WqkZhruMUDkUwily53YCOyvTWk5/8grg7a8O9KSIyfmpU/oPjoKytxjvPmWUKUNz2AbBJARpGO+"
+}

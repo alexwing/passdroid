@@ -1,0 +1,55 @@
+{
+  "revision": 6,
+  "deviceId": "744895b4-3897-42c4-b3e5-0a383152b75c",
+  "entries": [
+    {
+      "id": "68549dac-de5d-4ab5-9859-5d0df8c95b2c",
+      "title": "Cuenta bancaria 🏦 ñandú 日本語",
+      "username": "titular@example.com",
+      "password": "pásswörd-🔐-Ω",
+      "url": "",
+      "notes": "Notas con emoji 🔐 y acentos áéíóú\nsegunda línea con \"comillas\" y \\barras",
+      "createdAt": "2026-11-09T15:08:55.789Z",
+      "updatedAt": "2026-11-09T15:08:55.789Z",
+      "deletedAt": null,
+      "conflict": false
+    },
+    {
+      "id": "2780d6df-7b94-4756-a653-8d82766f2799",
+      "title": "Mail",
+      "username": "user@example.com",
+      "password": "c0rrect-h0rse-battery",
+      "url": "https://mail.example.com/login?next=%2Finbox",
+      "notes": "",
+      "createdAt": "2026-11-09T15:08:55.790Z",
+      "updatedAt": "2026-11-09T15:08:55.790Z",
+      "deletedAt": null,
+      "conflict": false
+    },
+    {
+      "id": "080f1946-43d8-45b0-9135-699b5f7bdee3",
+      "title": "Minimal",
+      "username": "",
+      "password": "",
+      "url": "",
+      "notes": "",
+      "createdAt": "2026-11-09T15:08:55.790Z",
+      "updatedAt": "2026-11-09T15:08:55.790Z",
+      "deletedAt": null,
+      "conflict": false
+    }
+  ],
+  "settings": {
+    "icon": "shield",
+    "sync": {
+      "enabled": true,
+      "host": "ftp.example.invalid",
+      "password": "fixture-password",
+      "port": 21,
+      "protocol": "ftps",
+      "remoteDir": "vault",
+      "remoteFile": "passdroid.pdvault",
+      "username": "fixture"
+    }
+  }
+}
