@@ -1,6 +1,19 @@
-# Passdroid v3.1.4
+# Passdroid v3.1.5
 
-## 🚀 What's New in v3.1.4
+## 🚀 What's New in v3.1.5
+
+### ⚙️ Settings inside the window
+- **Settings is no longer a popup.** It opens as a view inside the vault window: on desktop it takes the place of the entry list and editor (the side rail stays visible and highlights *Settings*); on phones it fills the screen above the bottom bar, which also marks the active view.
+- Locking the vault (manually or when the app goes to the background) and reopening a vault always return to *Entries* and clear the change-password form.
+- *Use password* in the generator now opens the editor with the generated password.
+
+### 📝 Roomier notes
+- The notes box (both *Write* and *Preview*) now stretches down to the *Save* bar instead of having a fixed height, and the preview scrolls on its own.
+
+---
+
+
+## 📦 Prior v3.1.4 Highlights
 
 ### 💾 Android export fixed (important)
 - **The bug**: in v3.1.3 on some Android builds (seen on HyperOS / Android 16) the system "save as" picker lost its result, so *Export* silently created an **empty file** and showed nothing.
