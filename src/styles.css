@@ -990,6 +990,9 @@ input.switch:checked::after {
 }
 
 .vault-chip span {
+  /* Without min-width: 0 the flex item never shrinks below its text, so a long
+     "host • file" widened the whole form past the dialog on phones. */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1980,13 +1983,18 @@ button.md-img:hover {
 .modal-title {
   display: grid;
   min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
 }
 
 .modal h2 {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 10px;
+  /* Titles come from user data (entry title, vault name): a long single word
+     must wrap instead of pushing the close button out of the dialog. */
+  overflow-wrap: anywhere;
   font-size: 24px;
   line-height: 1.2;
 }
@@ -2142,6 +2150,8 @@ button.md-img:hover {
 .generator-layout,
 .import-preview {
   display: grid;
+  /* A single column that stays inside its container, whatever a child's min-content. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
