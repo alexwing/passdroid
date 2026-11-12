@@ -312,10 +312,11 @@ function App() {
     const handleHidden = () => {
       if (document.hidden) lock();
     };
-    document.addEventListener("visibilitychange", handleHidden);
-    // Web: the page can be closed or navigated away without a visibility change,
-    // and the server copy must not stay unlocked in a forgotten tab. A host can
-    // also ask for a lock explicitly (VAULT_LOCK_EVENT).
+    // Desktop and Android lock when the window is minimised or the app goes to
+    // the background. The web does not: switching tabs or apps (or losing focus)
+    // keeps the vault open. It locks only when the page is closed or navigated
+    // away (pagehide), or when a host asks for it explicitly (VAULT_LOCK_EVENT).
+    if (!caps.web) document.addEventListener("visibilitychange", handleHidden);
     if (caps.web) {
       window.addEventListener("pagehide", lock);
       window.addEventListener(VAULT_LOCK_EVENT, lock);
