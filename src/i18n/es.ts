@@ -176,7 +176,7 @@ const es = {
   err_web_unsupported: "Esta función no está disponible en la versión web.",
   err_remote_rollback: "El servidor tiene una versión más antigua que la de este dispositivo. No se ha aplicado.",
   err_vault_mismatch: "El vault del servidor no corresponde a este vault.",
-  err_rekey_required: "El vault necesita una actualización de cifrado antes de poder guardarse.",
+  err_rekey_required: "La contraseña maestra cambió en otro dispositivo. Vuelve a desbloquear con la nueva.",
   err_unknown: "No se pudo completar la operación.",
 
   // QR Vault Linking

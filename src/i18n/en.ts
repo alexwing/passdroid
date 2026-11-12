@@ -178,7 +178,7 @@ const en: Record<keyof typeof es, string> = {
   err_web_unsupported: "This feature is not available in the web version.",
   err_remote_rollback: "The server has an older version than this device. Nothing was applied.",
   err_vault_mismatch: "The server vault does not match this vault.",
-  err_rekey_required: "The vault needs an encryption upgrade before it can be saved.",
+  err_rekey_required: "The master password changed on another device. Unlock again with the new one.",
   err_unknown: "The operation could not be completed.",
 
   // QR Vault Linking
