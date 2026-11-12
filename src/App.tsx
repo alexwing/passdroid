@@ -288,8 +288,8 @@ function App() {
       .catch(() => {});
   }, []);
 
-  // Security: lock the open vault when the app goes to the background (app
-  // switch, recents, screen off) so returning requires the master password
+  // Security (Android only): lock the open vault when the app goes to the
+  // background (app switch, recents, screen off) so returning requires the master password
   // again — like the original Passdroid. The vault path is kept so the unlock
   // screen targets the same vault.
   useEffect(() => {
@@ -312,11 +312,11 @@ function App() {
     const handleHidden = () => {
       if (document.hidden) lock();
     };
-    // Desktop and Android lock when the window is minimised or the app goes to
-    // the background. The web does not: switching tabs or apps (or losing focus)
-    // keeps the vault open. It locks only when the page is closed or navigated
-    // away (pagehide), or when a host asks for it explicitly (VAULT_LOCK_EVENT).
-    if (!caps.web) document.addEventListener("visibilitychange", handleHidden);
+    // Only Android locks when the app goes to the background. On the Windows
+    // desktop (minimising) and on the web (switching tabs or apps, losing focus)
+    // the vault stays open. The web still locks when the page is closed or
+    // navigated away (pagehide), or when a host asks for it (VAULT_LOCK_EVENT).
+    if (isAndroid) document.addEventListener("visibilitychange", handleHidden);
     if (caps.web) {
       window.addEventListener("pagehide", lock);
       window.addEventListener(VAULT_LOCK_EVENT, lock);
@@ -326,7 +326,7 @@ function App() {
       window.removeEventListener("pagehide", lock);
       window.removeEventListener(VAULT_LOCK_EVENT, lock);
     };
-  }, [screen, caps.web]);
+  }, [screen, caps.web, isAndroid]);
 
   // Web: the vault can change outside this UI (another device saved it). Reload
   // the list, keep the selection when that entry still exists, and drop any
