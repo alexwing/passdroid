@@ -10,9 +10,11 @@
 // - ftpSync / qrLink: FTP sync and device linking are desktop/Android
 //   features; the QR carries the FTP password and must never be shown in a
 //   browser. The web saves to the server automatically.
-// - createVault, importLegacy, exportFiles, changeMasterPassword, vaultIcon:
-//   out of scope for web v1 (PLAN §4); change of master password and the
-//   encrypted copy download come in v1.1.
+// - createVault, importLegacy, exportFiles, vaultIcon: out of scope for web v1
+//   (PLAN §4); the encrypted copy download comes in v1.1.
+// - changeMasterPassword is on for the web: the shell re-keys the vault in the
+//   crypto worker and saves it to the server (other sessions see the new salt
+//   and ask for the new password).
 // - titleBar: the custom desktop title bar.
 // - qrShare is the exception: the web shell turns it on, so the settings can show
 //   a QR that links a phone to this vault (the server fetches the FTP config
@@ -69,7 +71,7 @@ export const WEB_CAPABILITIES: PlatformCapabilities = {
   createVault: false,
   importLegacy: false,
   exportFiles: false,
-  changeMasterPassword: false,
+  changeMasterPassword: true,
   vaultIcon: false,
   titleBar: false,
   serverSync: true,

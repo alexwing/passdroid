@@ -225,6 +225,21 @@ pub fn new_vault(password: &str) -> Result<String, JsError> {
     core::seal_envelope(&mut created.header, &mut created.data, &created.key[..]).map_err(err)
 }
 
+/// Fresh default KDF params as JSON (`default_kdf_params`: Argon2id with a
+/// random 16-byte salt). Used to re-key a vault: the new password is derived
+/// with these params, the old key stays untouched until the change is saved.
+#[wasm_bindgen(js_name = defaultKdfParams)]
+pub fn default_kdf_params() -> Result<String, JsError> {
+    serde_json_string(&core::default_kdf_params())
+}
+
+/// Master password policy (`validate_password`): a too-short password is
+/// `master_password_too_short`. Checked before any derivation, like the desktop.
+#[wasm_bindgen(js_name = validatePassword)]
+pub fn validate_password(password: &str) -> Result<(), JsError> {
+    core::validate_password(password).map_err(err)
+}
+
 /// Rollback guard (`check_rollback`). Revisions must be integers >= 0, otherwise
 /// `invalid_revision`. `max_seen_revision` is optional (`undefined` or `null`).
 #[wasm_bindgen(js_name = checkRollback)]

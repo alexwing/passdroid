@@ -101,7 +101,7 @@ describe("Passdroid Web: UI compartida con capacidades web", () => {
     expect(backend.snapshot().unlocked).toBe(true);
   });
 
-  it("sin botones de sincronizar, importar, exportar, pestañas de sync y seguridad, ni cambio de icono; el estado dice que está en el servidor", async () => {
+  it("sin botones de sincronizar, importar, exportar, pestaña de sync, ni cambio de icono; el estado dice que está en el servidor", async () => {
     const user = userEvent.setup();
     renderApp();
     await unlockFromRecent(user);
@@ -115,8 +115,23 @@ describe("Passdroid Web: UI compartida con capacidades web", () => {
     await openSettings(user);
     expect(screen.getByRole("tab", { name: "General" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /Sincronización/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Seguridad" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Elegir icono" })).not.toBeInTheDocument();
+  });
+
+  it("Ajustes ofrece la pestaña Seguridad y cambia la clave maestra desde la web", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await unlockFromRecent(user);
+
+    await openSettings(user);
+    await user.click(screen.getByRole("tab", { name: "Seguridad" }));
+    await user.type(screen.getByLabelText("Clave actual"), MASTER);
+    await user.type(screen.getByLabelText("Nueva clave"), "una-clave-nueva-larga");
+    await user.type(screen.getByLabelText("Repetir nueva clave"), "una-clave-nueva-larga");
+    await user.click(screen.getByRole("button", { name: "Aplicar" }));
+
+    expect(await screen.findByText("Clave actualizada.")).toBeInTheDocument();
+    expect(backend.calls.map((call) => call.cmd)).toContain("change_master_password");
   });
 
   it("tras desbloquear no pide la configuración ni el estado de sincronización FTP", async () => {

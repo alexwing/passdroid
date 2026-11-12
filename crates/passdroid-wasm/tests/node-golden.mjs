@@ -408,6 +408,21 @@ check('newVault: empty or too short password -> master_password_too_short', () =
   strictEqual(errorCodeOf(() => api.newVault('short')), 'master_password_too_short');
 });
 
+check('defaultKdfParams: fresh salt each call, within bounds, derives a 32-byte key', () => {
+  const a = JSON.parse(api.defaultKdfParams());
+  const b = JSON.parse(api.defaultKdfParams());
+  strictEqual(a.algorithm, 'Argon2id');
+  notStrictEqual(a.salt, b.salt);
+  api.checkKdfBounds(JSON.stringify(a));
+  strictEqual(api.deriveKey('a-new-master-password', JSON.stringify(a)).length, 32);
+});
+
+check('validatePassword: accepts 8+ chars, rejects shorter with master_password_too_short', () => {
+  api.validatePassword('12345678');
+  strictEqual(errorCodeOf(() => api.validatePassword('1234567')), 'master_password_too_short');
+  strictEqual(errorCodeOf(() => api.validatePassword('')), 'master_password_too_short');
+});
+
 check('parseHeader: malformed envelope -> vault_file_invalid', () => {
   strictEqual(errorCodeOf(() => api.parseHeader('{not json')), 'vault_file_invalid');
   strictEqual(errorCodeOf(() => api.parseHeader('{}')), 'vault_file_invalid');
